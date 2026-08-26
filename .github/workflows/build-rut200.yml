@@ -62,7 +62,10 @@ jobs:
           tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
 
       - name: Assemble source
-        run: cat src/parts/part00.cfrag src/parts/part01.cfrag src/parts/part02.cfrag > src/rut200_bacnet_mqtt_gateway.c
+        run: |
+          cat src/parts/part00.cfrag > src/rut200_bacnet_mqtt_gateway.c
+          tail -n +2 src/parts/part01.cfrag >> src/rut200_bacnet_mqtt_gateway.c
+          cat src/parts/part02.cfrag >> src/rut200_bacnet_mqtt_gateway.c
 
       - name: Cross compile gateway
         run: |

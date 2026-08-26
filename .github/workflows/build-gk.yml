@@ -139,32 +139,30 @@ jobs:
           file "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep NEEDED
 
-      - name: Install custom package definitions
+      - name: Install custom package definition
         run: |
-          rm -rf sdk/package/custom/gk-bacnet-mqtt sdk/package/custom/libbacnet-teltonika
-          mkdir -p sdk/package/custom/gk-bacnet-mqtt/files sdk/package/custom/libbacnet-teltonika
+          rm -rf sdk/package/custom/gk-bacnet-mqtt
+          mkdir -p sdk/package/custom/gk-bacnet-mqtt/files
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           cp package/gk-bacnet-mqtt/files/* sdk/package/custom/gk-bacnet-mqtt/files/
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
-          cp package/libbacnet-teltonika/Makefile sdk/package/custom/libbacnet-teltonika/Makefile
 
-      - name: Enable and build IPKs
+      - name: Enable and build GK IPK
         working-directory: sdk
         run: |
           rm -rf tmp
           make defconfig
-          printf '%s\n' 'CONFIG_PACKAGE_libbacnet-teltonika=m' 'CONFIG_PACKAGE_gk-bacnet-mqtt=m' >> .config
+          printf '%s\n' 'CONFIG_PACKAGE_gk-bacnet-mqtt=m' >> .config
           make defconfig
-          make package/custom/libbacnet-teltonika/compile -j1 V=s
           make package/custom/gk-bacnet-mqtt/compile -j1 V=s
 
-      - name: Collect IPKs
+      - name: Collect GK IPK
         run: |
           rm -rf dist
           mkdir dist
-          find sdk/bin/packages -type f \( -iname '*libbacnet*teltonika*.ipk' -o -iname '*gk*bacnet*mqtt*.ipk' \) -exec cp -v {} dist/ \;
+          find sdk/bin/packages -type f -iname '*gk*bacnet*mqtt*.ipk' -exec cp -v {} dist/ \;
           ls -lh dist
-          test "$(find dist -name '*.ipk' | wc -l)" -ge 2
+          test "$(find dist -name '*.ipk' | wc -l)" -ge 1
 
       - uses: actions/upload-artifact@v4
         with:

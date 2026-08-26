@@ -46,6 +46,14 @@ gk-bacnet-mqtt
 
 `lib-bacnet` is the official Teltonika BACnet runtime dependency used by Teltonika's own BACnet Router package. `libmosquitto-ssl` is the RutOS Mosquitto client library with TLS capability.
 
+The Teltonika GPL SDK contains `libbacnet.so`, but does not expose `lib-bacnet` as a normal buildable package definition. To let the OpenWrt package build resolve `DEPENDS:=+lib-bacnet`, CI injects a metadata-only build shim from:
+
+```text
+package/build-shims/lib-bacnet/Makefile
+```
+
+The shim contains no runtime library and is not collected as a release artifact. The generated GK IPK still declares `lib-bacnet` as its runtime dependency, so the real package is expected to be supplied by RutOS Package Manager/opkg on the target device.
+
 The build therefore produces only one GK package per target:
 
 ```text

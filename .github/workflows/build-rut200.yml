@@ -65,15 +65,6 @@ jobs:
           mkdir "$RUNNER_TEMP/bacnet-stack"
           tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
 
-      - name: Assemble gateway source
-        run: |
-          set -euo pipefail
-          cat src/parts/part00.cfrag > src/rut200_bacnet_mqtt_gateway.c
-          tail -n +2 src/parts/part01.cfrag >> src/rut200_bacnet_mqtt_gateway.c
-          cat src/parts/part02.cfrag >> src/rut200_bacnet_mqtt_gateway.c
-          test -s src/rut200_bacnet_mqtt_gateway.c
-          echo "Source lines: $(wc -l < src/rut200_bacnet_mqtt_gateway.c)"
-
       - name: Cross compile gateway
         run: |
           set -euo pipefail
@@ -86,6 +77,7 @@ jobs:
           SYSROOT="$SDK/staging_dir/target-mipsel_24kc_musl"
           test -x "$CC"
           test -n "$MOSQDIR"
+          test -s "$GITHUB_WORKSPACE/src/rut200_bacnet_mqtt_gateway.c"
           "$CC" -Os -march=24kc -msoft-float --sysroot="$SYSROOT" \
             -I"$BAC/src" -I"$MOSQDIR/include" \
             "$GITHUB_WORKSPACE/src/rut200_bacnet_mqtt_gateway.c" \

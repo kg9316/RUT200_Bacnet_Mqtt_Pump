@@ -1,0 +1,171 @@
+/*
+ * rut200_bacnet_mqtt_gateway.c
+ *
+ * Native BACnet/IP -> MQTT gateway for Teltonika RUT200 / RutOS.
+ * Target: mipsel_24kc/musl, Teltonika libbacnet.so (BACnet Stack 1.3.8),
+ *         libmosquitto 2.0.x.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include <signal.h>
+#include <time.h>
+#include <unistd.h>
+#include <ctype.h>
+
+#include <mosquitto.h>
+
+#include "bacnet/bacdef.h"
+#include "bacnet/bacenum.h"
+#include "bacnet/bacapp.h"
+#include "bacnet/apdu.h"
+#include "bacnet/npdu.h"
+#include "bacnet/rp.h"
+#include "bacnet/iam.h"
+#include "bacnet/datalink/datalink.h"
+#include "bacnet/basic/binding/address.h"
+#include "bacnet/basic/service/h_apdu.h"
+#include "bacnet/basic/service/h_iam.h"
+#include "bacnet/basic/service/s_whois.h"
+#include "bacnet/basic/service/s_rp.h"
+#include "bacnet/basic/npdu/h_npdu.h"
+#include "bacnet/basic/tsm/tsm.h"
+
+/* Teltonika libbacnet.so compatibility globals. */
+uint32_t gateway_port = 0;
+char gateway_address[32] = {0};
+uint32_t force_gateway = 0;
+uint32_t bbmd_interface = 0;
+uint32_t bbmd_enabled = 0;
+uint32_t bbmd_port = 47808;
+
+#define MAX_DEVICES             64
+#define MAX_POINTS_PER_DEVICE  512
+#define NAME_LEN                96
+#define DESC_LEN               192
+#define UNIT_LEN                48
+#define TOPIC_LEN              384
+#define PAYLOAD_LEN            512
+#define DEFAULT_BACNET_IF       "br-lan"
+#define DEFAULT_MQTT_HOST       "127.0.0.1"
+#define DEFAULT_MQTT_PORT       1883
+#define DEFAULT_POLL_MS         5000
+#define DEFAULT_DISCOVERY_MS    10000
+#define DEFAULT_MAX_AGE_SEC     300
+#define DEFAULT_RP_TIMEOUT_MS   3000
+
+#ifndef BACNET_ARRAY_ALL
+#define BACNET_ARRAY_ALL 0xFFFFFFFFu
+#endif
+
+static volatile sig_atomic_t g_running = 1;
+
+static uint64_t monotonic_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+}
+
+static time_t unix_time_now(void) { return time(NULL); }
+static void signal_handler(int sig) { (void)sig; g_running = 0; }
+
+static void safe_copy(char *dst, size_t n, const char *src)
+{
+    if (!dst || !n) return;
+    snprintf(dst, n, "%s", src ? src : "");
+}
+
+static void topic_sanitize(char *s)
+{
+    size_t i;
+    if (!s) return;
+    for (i = 0; s[i]; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (!(isalnum(c) || c == '-' || c == '_' || c == '.')) s[i] = '_';
+    }
+}
+
+static bool double_changed(double a, double b)
+{
+    double d = a - b;
+    if (d < 0.0) d = -d;
+    return d > 0.000001;
+}
+
+typedef enum { VALUE_NONE=0, VALUE_NUMBER, VALUE_BOOL, VALUE_STRING } VALUE_KIND;
+
+typedef struct {
+    BACNET_OBJECT_TYPE object_type;
+    uint32_t object_instance;
+    char name[NAME_LEN];
+    char description[DESC_LEN];
+    char unit[UNIT_LEN];
+    bool metadata_complete;
+    bool config_published;
+    VALUE_KIND value_kind;
+    double numeric_value;
+    bool bool_value;
+    char string_value[NAME_LEN];
+    bool have_value;
+    double last_pub_numeric;
+    bool last_pub_bool;
+    char last_pub_string[NAME_LEN];
+    bool have_published_value;
+    time_t last_publish;
+    uint64_t next_poll_ms;
+    uint8_t metadata_step;
+} POINT_STATE;
+
+typedef struct {
+    bool used;
+    uint32_t device_id;
+    char name[NAME_LEN];
+    bool have_name;
+    uint32_t object_count;
+    uint32_t next_object_index;
+    bool have_object_count;
+    bool object_list_complete;
+    POINT_STATE points[MAX_POINTS_PER_DEVICE];
+    size_t point_count;
+    uint64_t last_seen_ms;
+} DEVICE_STATE;
+
+static DEVICE_STATE g_devices[MAX_DEVICES];
+
+typedef enum {
+    REQ_NONE=0, REQ_DEVICE_NAME, REQ_OBJECT_LIST_COUNT, REQ_OBJECT_LIST_ITEM,
+    REQ_POINT_NAME, REQ_POINT_DESCRIPTION, REQ_POINT_UNITS, REQ_POINT_PRESENT_VALUE
+} REQUEST_KIND;
+
+typedef struct {
+    bool active;
+    REQUEST_KIND kind;
+    uint8_t invoke_id;
+    uint64_t sent_ms;
+    DEVICE_STATE *device;
+    POINT_STATE *point;
+    uint32_t object_list_index;
+} REQUEST_STATE;
+
+static REQUEST_STATE g_request;
+
+static struct mosquitto *g_mosq = NULL;
+static bool g_mqtt_connected = false;
+static char g_mqtt_host[128] = DEFAULT_MQTT_HOST;
+static int g_mqtt_port = DEFAULT_MQTT_PORT;
+static char g_topic_root[128] = "bacnet";
+static unsigned g_poll_ms = DEFAULT_POLL_MS;
+static unsigned g_discovery_ms = DEFAULT_DISCOVERY_MS;
+static unsigned g_max_age_sec = DEFAULT_MAX_AGE_SEC;
+static unsigned g_rp_timeout_ms = DEFAULT_RP_TIMEOUT_MS;
+
+static void mqtt_on_connect(struct mosquitto *m, void *u, int rc)
+{
+    (void)m; (void)u;
+    g_mqtt_connected = (rc == 0);
+    fprintf(rc == 0 ? stdout : stderr, "MQTT %s rc=%d\n", rc == 0 ? "connected" : "connect failed", rc);
+}

@@ -19,10 +19,12 @@ jobs:
             sdk_archive: RUT2M_R_GPL_00.07.24.2.tar.gz
             sdk_md5: d94ad61ba377433ba96432de980b940a
             sdk_secret: TELTONIKA_SDK_URL
+            cache_prefix: rutos-00.07.24.2-mipsel24kc-v1
           - target: RUT14X
             sdk_archive: RUT14X_R_GPL_00.07.24.2.tar.gz
             sdk_md5: 70eea784f08641d43a18f896e30022c4
             sdk_secret: RUT14X_SDK_URL
+            cache_prefix: gk-rutos-RUT14X-00.07.24.2-v1
 
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +60,7 @@ jobs:
             sdk/build_dir/hostpkg
             sdk/build_dir/toolchain-*
             sdk/build_dir/target-*/mosquitto-ssl
-          key: gk-rutos-${{ matrix.target }}-00.07.24.2-v1-${{ runner.os }}
+          key: ${{ matrix.cache_prefix }}-${{ runner.os }}
 
       - name: Prepare toolchain and Mosquitto
         working-directory: sdk

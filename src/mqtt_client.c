@@ -170,7 +170,7 @@ int mqtt_client_init(void)
     if (rc != MOSQ_ERR_SUCCESS)
         return rc;
 
-    g_mosq = mosquitto_new("rut200-bacnet-mqtt", true, NULL);
+    g_mosq = mosquitto_new("gk-bacnet-mqtt", true, NULL);
     if (!g_mosq)
         return MOSQ_ERR_NOMEM;
 

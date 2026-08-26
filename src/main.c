@@ -31,7 +31,7 @@ int main(int argc, char **argv)
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    printf("RUT200 BACnet -> MQTT Gateway\n");
+    printf("GK BACnet -> MQTT Gateway\n");
     printf("BACnet=%s MQTT=%s:%d root=%s\n",
            bacnet_interface,
            g_mqtt_host,

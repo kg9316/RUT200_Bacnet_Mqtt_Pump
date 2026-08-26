@@ -139,13 +139,14 @@ jobs:
           file "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep NEEDED
 
-      - name: Install custom package definition
+      - name: Install custom package definitions
         run: |
-          rm -rf sdk/package/custom/gk-bacnet-mqtt
-          mkdir -p sdk/package/custom/gk-bacnet-mqtt/files
+          rm -rf sdk/package/custom/gk-bacnet-mqtt sdk/package/custom/lib-bacnet
+          mkdir -p sdk/package/custom/gk-bacnet-mqtt/files sdk/package/custom/lib-bacnet
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           cp package/gk-bacnet-mqtt/files/* sdk/package/custom/gk-bacnet-mqtt/files/
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
+          cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
 
       - name: Enable and build GK IPK
         working-directory: sdk
@@ -154,6 +155,7 @@ jobs:
           make defconfig
           printf '%s\n' 'CONFIG_PACKAGE_gk-bacnet-mqtt=m' >> .config
           make defconfig
+          grep -q '^CONFIG_PACKAGE_lib-bacnet=m' .config || grep -q '^CONFIG_PACKAGE_lib-bacnet=y' .config
           make package/custom/gk-bacnet-mqtt/compile -j1 V=s
 
       - name: Collect GK IPK

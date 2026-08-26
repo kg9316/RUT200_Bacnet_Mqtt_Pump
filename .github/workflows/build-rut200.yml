@@ -77,10 +77,13 @@ jobs:
           SYSROOT="$SDK/staging_dir/target-mipsel_24kc_musl"
           test -x "$CC"
           test -n "$MOSQDIR"
-          test -s "$GITHUB_WORKSPACE/src/rut200_bacnet_mqtt_gateway.c"
           "$CC" -Os -march=24kc -msoft-float --sysroot="$SYSROOT" \
-            -I"$BAC/src" -I"$MOSQDIR/include" \
-            "$GITHUB_WORKSPACE/src/rut200_bacnet_mqtt_gateway.c" \
+            -I"$GITHUB_WORKSPACE/src" -I"$BAC/src" -I"$MOSQDIR/include" \
+            "$GITHUB_WORKSPACE/src/main.c" \
+            "$GITHUB_WORKSPACE/src/util.c" \
+            "$GITHUB_WORKSPACE/src/device_table.c" \
+            "$GITHUB_WORKSPACE/src/mqtt_client.c" \
+            "$GITHUB_WORKSPACE/src/bacnet_client.c" \
             "$SDK/package/teltonika/libs/lib-bacnet/ipkg-install/usr/lib/libbacnet.so" \
             "$MOSQDIR/lib/libmosquitto.so.1" \
             -L"$SDK/staging_dir/usr/lib" \

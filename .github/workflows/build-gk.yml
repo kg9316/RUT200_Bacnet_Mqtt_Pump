@@ -52,6 +52,7 @@ jobs:
         run: ./scripts/feeds update -a
 
       - name: Restore RutOS build cache
+        id: rutos-cache
         uses: actions/cache@v4
         with:
           path: |
@@ -61,13 +62,24 @@ jobs:
             sdk/build_dir/toolchain-*
             sdk/build_dir/target-*/mosquitto-ssl
           key: ${{ matrix.cache_prefix }}-${{ runner.os }}
+          restore-keys: |
+            ${{ matrix.cache_prefix }}-
 
       - name: Prepare toolchain and Mosquitto
+        if: steps.rutos-cache.outputs.cache-hit != 'true'
         working-directory: sdk
         run: |
           make tools/install -j2
           make toolchain/install -j2
           make package/mosquitto/compile -j2
+
+      - name: Verify cached build environment
+        if: steps.rutos-cache.outputs.cache-hit == 'true'
+        run: |
+          set -euo pipefail
+          echo "RutOS build cache restored for ${{ matrix.target }}"
+          test -n "$(find sdk/staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
+          test -n "$(find sdk/build_dir -type d -path '*/mosquitto-ssl/mosquitto-2.0.21' | head -1)"
 
       - name: Get BACnet Stack 1.3.8 headers
         run: |

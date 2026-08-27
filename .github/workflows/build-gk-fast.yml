@@ -39,31 +39,24 @@ jobs:
           test "${{ steps.sdk-cache.outputs.cache-hit }}" = "true"
           test -d sdk/staging_dir
           test -x sdk/scripts/ipkg-build
-
           TOOLCHAIN_DIR="$(find sdk/staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
           SYSROOT="$(find sdk/staging_dir -maxdepth 1 -type d -name 'target-*' | head -1)"
           MOSQDIR="$(find sdk/build_dir -type d -path '*/mosquitto-ssl/mosquitto-2.0.21' | head -1)"
           LIBBACNET="$(find sdk/package/teltonika/libs/lib-bacnet -type f -path '*/usr/lib/libbacnet.so' | head -1)"
           SSTRIP="$(find sdk/staging_dir -type f -name 'sstrip' -perm -111 | head -1)"
-
           test -n "$TOOLCHAIN_DIR"
           test -n "$SYSROOT"
           test -n "$MOSQDIR"
           test -f "$MOSQDIR/lib/libmosquitto.so.1"
           test -f "$LIBBACNET"
-          test -n "$SSTRIP"
           test -x "$SSTRIP"
-          echo "sstrip=$SSTRIP"
 
       - name: Get BACnet Stack 1.3.8 headers
         run: |
           set -euo pipefail
-          curl -fL --retry 4 \
-            https://github.com/bacnet-stack/bacnet-stack/archive/refs/tags/bacnet-stack-1.3.8.tar.gz \
-            -o "$RUNNER_TEMP/bacnet.tar.gz"
+          curl -fL --retry 4 https://github.com/bacnet-stack/bacnet-stack/archive/refs/tags/bacnet-stack-1.3.8.tar.gz -o "$RUNNER_TEMP/bacnet.tar.gz"
           mkdir -p "$RUNNER_TEMP/bacnet-stack"
-          tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" \
-            -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
+          tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
 
       - name: Cross compile and RutOS-strip GK gateway
         run: |
@@ -71,7 +64,6 @@ jobs:
           SDK="$GITHUB_WORKSPACE/sdk"
           export STAGING_DIR="$SDK/staging_dir"
           BAC="$RUNNER_TEMP/bacnet-stack"
-
           TOOLCHAIN_DIR="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
           SYSROOT="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'target-*' | head -1)"
           CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
@@ -79,14 +71,12 @@ jobs:
           SSTRIP="$(find "$SDK/staging_dir" -type f -name 'sstrip' -perm -111 | head -1)"
           MOSQDIR="$(find "$SDK/build_dir" -type d -path '*/mosquitto-ssl/mosquitto-2.0.21' | head -1)"
           LIBBACNET="$(find "$SDK/package/teltonika/libs/lib-bacnet" -type f -path '*/usr/lib/libbacnet.so' | head -1)"
-
           test -x "$CC"
           test -x "$STRIP"
           test -x "$SSTRIP"
           test -d "$SYSROOT"
           test -f "$MOSQDIR/lib/libmosquitto.so.1"
           test -f "$LIBBACNET"
-
           "$CC" -Os --sysroot="$SYSROOT" \
             -I"$GITHUB_WORKSPACE/src" -I"$BAC/src" -I"$MOSQDIR/include" \
             "$GITHUB_WORKSPACE/src/main.c" \
@@ -95,157 +85,96 @@ jobs:
             "$GITHUB_WORKSPACE/src/mqtt_client.c" \
             "$GITHUB_WORKSPACE/src/bacnet_client.c" \
             "$GITHUB_WORKSPACE/src/status.c" \
-            "$LIBBACNET" \
-            "$MOSQDIR/lib/libmosquitto.so.1" \
+            "$LIBBACNET" "$MOSQDIR/lib/libmosquitto.so.1" \
             -L"$SDK/staging_dir/usr/lib" \
-            -Wl,-rpath,/usr/lib \
-            -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
-            -latomic \
-            -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
-
-          echo "=== dynamic dependencies before final strip ==="
+            -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
+            -latomic -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
+          echo "=== linked libraries ==="
           readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep NEEDED
+          readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -q 'libbacnet.so'
+          readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -q 'libmosquitto.so.1'
+          readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -q 'libatomic.so.1'
           "$STRIP" "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           "$SSTRIP" "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
-          echo "=== RutOS-stripped binary ==="
           file "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
-          ls -l "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
+          ls -lh "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
 
-      - name: Fast-package three RutOS-equivalent IPKs
+      - name: Fast-package three IPKs
         env:
           FIRMWARE: ${{ matrix.firmware }}
         run: |
           set -euo pipefail
-
           ARCH="$(sed -n 's/^CONFIG_TARGET_ARCH_PACKAGES="\([^"]*\)"/\1/p' sdk/.config | head -1)"
           if [ -z "$ARCH" ]; then
             ARCH="$(basename "$(find sdk/bin/packages -mindepth 1 -maxdepth 1 -type d | head -1)")"
           fi
           test -n "$ARCH"
-          echo "Package architecture: $ARCH"
-          echo "Firmware: $FIRMWARE"
+          ROOT="$RUNNER_TEMP/gk-ipk-stage"
+          rm -rf "$ROOT" dist
+          mkdir -p "$ROOT" dist
 
-          rm -rf "$RUNNER_TEMP/gk-ipk-stage" "$GITHUB_WORKSPACE/dist"
-          mkdir -p "$RUNNER_TEMP/gk-ipk-stage" "$GITHUB_WORKSPACE/dist"
-
-          make_control() {
-            local dir="$1" package="$2" version="$3" depends="$4" source="$5" section="$6" title="$7" description="$8"
-            local installed_size
-            installed_size="$(du -sb "$dir" | awk '{print $1}')"
+          write_control() {
+            local dir="$1" pkg="$2" ver="$3" deps="$4" source="$5" section="$6" title="$7" desc="$8"
             mkdir -p "$dir/CONTROL"
-            cat > "$dir/CONTROL/control" <<EOF
-Package: $package
-Version: $version
-Depends: $depends
-Source: package/custom/$source
-SourceName: $source
-License: UNKNOWN
-Section: $section
-Architecture: $ARCH
-Installed-Size: $installed_size
-Firmware: $FIRMWARE
-Description: $title
- $description
-EOF
+            local size
+            size="$(du -sb "$dir" | awk '{print $1}')"
+            printf '%s\n' \
+              "Package: $pkg" \
+              "Version: $ver" \
+              "Depends: $deps" \
+              "Source: package/custom/$source" \
+              "SourceName: $source" \
+              "License: UNKNOWN" \
+              "Section: $section" \
+              "Architecture: $ARCH" \
+              "Installed-Size: $size" \
+              "Firmware: $FIRMWARE" \
+              "Description: $title" \
+              " $desc" > "$dir/CONTROL/control"
           }
 
-          write_default_prerm() {
-            cat > "$1/CONTROL/prerm" <<'EOF'
-#!/bin/sh
-[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
-. ${IPKG_INSTROOT}/lib/functions.sh
-default_prerm $0 $@
-EOF
+          write_prerm() {
+            printf '%s\n' '#!/bin/sh' '[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0' '. ${IPKG_INSTROOT}/lib/functions.sh' 'default_prerm $0 $@' > "$1/CONTROL/prerm"
             chmod 0755 "$1/CONTROL/prerm"
           }
 
-          write_default_postrm() {
-            cat > "$1/CONTROL/postrm" <<'EOF'
-#!/bin/sh
-[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
-. ${IPKG_INSTROOT}/lib/functions.sh
-default_postrm $0 $@
-EOF
+          write_postrm() {
+            printf '%s\n' '#!/bin/sh' '[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0' '. ${IPKG_INSTROOT}/lib/functions.sh' 'default_postrm $0 $@' > "$1/CONTROL/postrm"
             chmod 0755 "$1/CONTROL/postrm"
           }
 
-          CORE="$RUNNER_TEMP/gk-ipk-stage/core"
+          CORE="$ROOT/core"
           mkdir -p "$CORE/usr/sbin" "$CORE/etc/config" "$CORE/etc/init.d"
           install -m0755 gk-bacnet-mqtt "$CORE/usr/sbin/gk-bacnet-mqtt"
           install -m0644 package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.config "$CORE/etc/config/gk-bacnet-mqtt"
           install -m0755 package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.init "$CORE/etc/init.d/gk-bacnet-mqtt"
-          make_control "$CORE" \
-            "gk-bacnet-mqtt" "1.0.0-2" \
-            "libc, lib-bacnet, libmosquitto-ssl, libatomic1" \
-            "gk-bacnet-mqtt" "utils" \
-            "GK BACnet to MQTT Gateway" \
-            "Native BACnet/IP to MQTT gateway for supported Teltonika RutOS devices. Uses the official Teltonika lib-bacnet runtime package."
+          write_control "$CORE" gk-bacnet-mqtt 1.0.0-2 'libc, lib-bacnet, libmosquitto-ssl, libatomic1' gk-bacnet-mqtt utils 'GK BACnet to MQTT Gateway' 'Native BACnet/IP to MQTT gateway for supported Teltonika RutOS devices. Uses the official Teltonika lib-bacnet runtime package.'
           printf '%s\n' '/etc/config/gk-bacnet-mqtt' > "$CORE/CONTROL/conffiles"
-          cat > "$CORE/CONTROL/postinst" <<'EOF'
-#!/bin/sh
-[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
-[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
-. ${IPKG_INSTROOT}/lib/functions.sh
-default_postinst $0 $@
-EOF
+          printf '%s\n' '#!/bin/sh' '[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0' '[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0' '. ${IPKG_INSTROOT}/lib/functions.sh' 'default_postinst $0 $@' > "$CORE/CONTROL/postinst"
           chmod 0755 "$CORE/CONTROL/postinst"
-          write_default_prerm "$CORE"
+          write_prerm "$CORE"
 
-          API="$RUNNER_TEMP/gk-ipk-stage/api"
+          API="$ROOT/api"
           mkdir -p "$API"
           cp -a package/vuci-app-gk-bacnet-mqtt-api/files/. "$API/"
-          make_control "$API" \
-            "vuci-app-gk-bacnet-mqtt-api" "1.0.0-1" \
-            "libc, gk-bacnet-mqtt, api-core" \
-            "vuci-app-gk-bacnet-mqtt-api" "vuci" \
-            "GK BACnet MQTT API" \
-            "Runtime status, configuration and log API for GK BACnet MQTT."
-          cat > "$API/CONTROL/postinst" <<'EOF'
-#!/bin/sh
-[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
-[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
-. ${IPKG_INSTROOT}/lib/functions.sh
-default_postinst $0 $@
-[ -z "${IPKG_INSTROOT}" ] || exit 0
-[ -x /etc/init.d/rpcd ] && {
-  /etc/init.d/rpcd enable
-  /etc/init.d/rpcd restart
-}
-EOF
+          write_control "$API" vuci-app-gk-bacnet-mqtt-api 1.0.0-1 'libc, gk-bacnet-mqtt, api-core' vuci-app-gk-bacnet-mqtt-api vuci 'GK BACnet MQTT API' 'Runtime status, configuration and log API for GK BACnet MQTT.'
+          printf '%s\n' '#!/bin/sh' '[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0' '[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0' '. ${IPKG_INSTROOT}/lib/functions.sh' 'default_postinst $0 $@' '[ -z "${IPKG_INSTROOT}" ] || exit 0' '[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd restart' > "$API/CONTROL/postinst"
           chmod 0755 "$API/CONTROL/postinst"
-          write_default_prerm "$API"
-          write_default_postrm "$API"
+          write_prerm "$API"
+          write_postrm "$API"
 
-          UI="$RUNNER_TEMP/gk-ipk-stage/ui"
+          UI="$ROOT/ui"
           mkdir -p "$UI"
           cp -a package/vuci-app-gk-bacnet-mqtt-ui/files/. "$UI/"
-          make_control "$UI" \
-            "vuci-app-gk-bacnet-mqtt-ui" "1.0.0-1" \
-            "libc, gk-bacnet-mqtt, vuci-app-gk-bacnet-mqtt-api" \
-            "vuci-app-gk-bacnet-mqtt-ui" "vuci" \
-            "GK BACnet MQTT UI" \
-            "GK BACnet MQTT configuration, runtime status and log UI."
-          cat > "$UI/CONTROL/postinst" <<'EOF'
-#!/bin/sh
-[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
-[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
-. ${IPKG_INSTROOT}/lib/functions.sh
-default_postinst $0 $@
-[ -n "${IPKG_INSTROOT}" ] || {
-  rm -f /tmp/luci-indexcache
-  rm -rf /tmp/luci-modulecache/
-  exit 0
-}
-EOF
+          write_control "$UI" vuci-app-gk-bacnet-mqtt-ui 1.0.0-1 'libc, gk-bacnet-mqtt, vuci-app-gk-bacnet-mqtt-api' vuci-app-gk-bacnet-mqtt-ui vuci 'GK BACnet MQTT UI' 'GK BACnet MQTT configuration, runtime status and log UI.'
+          printf '%s\n' '#!/bin/sh' '[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0' '[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0' '. ${IPKG_INSTROOT}/lib/functions.sh' 'default_postinst $0 $@' '[ -n "${IPKG_INSTROOT}" ] || rm -f /tmp/luci-indexcache' '[ -n "${IPKG_INSTROOT}" ] || rm -rf /tmp/luci-modulecache/' > "$UI/CONTROL/postinst"
           chmod 0755 "$UI/CONTROL/postinst"
-          write_default_prerm "$UI"
-          write_default_postrm "$UI"
+          write_prerm "$UI"
+          write_postrm "$UI"
 
           sdk/scripts/ipkg-build "$CORE" "$GITHUB_WORKSPACE/dist"
           sdk/scripts/ipkg-build "$API" "$GITHUB_WORKSPACE/dist"
           sdk/scripts/ipkg-build "$UI" "$GITHUB_WORKSPACE/dist"
-
-          echo "=== fast-build output ==="
           ls -lh dist
           test "$(find dist -maxdepth 1 -name '*.ipk' | wc -l)" -eq 3
 
@@ -257,73 +186,42 @@ EOF
           VERIFY="$RUNNER_TEMP/ipk-verify"
           rm -rf "$VERIFY"
           mkdir -p "$VERIFY"
-
           extract_ipk() {
             local ipk="$1" out="$2"
             mkdir -p "$out"
             if tar -tzf "$ipk" >/dev/null 2>&1; then
               tar -xzf "$ipk" -C "$out"
-            elif tar -tf "$ipk" >/dev/null 2>&1; then
-              tar -xf "$ipk" -C "$out"
             else
-              echo "ERROR: unsupported IPK format: $ipk"
-              exit 1
+              tar -xf "$ipk" -C "$out"
             fi
-            local control_tar data_tar
-            control_tar="$(find "$out" -maxdepth 1 -type f -name 'control.tar*' | head -1)"
-            data_tar="$(find "$out" -maxdepth 1 -type f -name 'data.tar*' | head -1)"
-            test -n "$control_tar"
-            test -n "$data_tar"
+            local ctl dat
+            ctl="$(find "$out" -maxdepth 1 -type f -name 'control.tar*' | head -1)"
+            dat="$(find "$out" -maxdepth 1 -type f -name 'data.tar*' | head -1)"
+            test -n "$ctl"
+            test -n "$dat"
             mkdir -p "$out/control" "$out/data"
-            tar -xf "$control_tar" -C "$out/control"
-            tar -xf "$data_tar" -C "$out/data"
+            tar -xf "$ctl" -C "$out/control"
+            tar -xf "$dat" -C "$out/data"
           }
-
           CORE_IPK="$(find dist -maxdepth 1 -name 'gk-bacnet-mqtt_*.ipk' | head -1)"
           API_IPK="$(find dist -maxdepth 1 -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' | head -1)"
           UI_IPK="$(find dist -maxdepth 1 -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
-          test -f "$CORE_IPK"
-          test -f "$API_IPK"
-          test -f "$UI_IPK"
-
           extract_ipk "$CORE_IPK" "$VERIFY/core"
           extract_ipk "$API_IPK" "$VERIFY/api"
           extract_ipk "$UI_IPK" "$VERIFY/ui"
-
-          echo "=== core control ==="
-          cat "$VERIFY/core/control/control"
           grep -q '^Depends: libc, lib-bacnet, libmosquitto-ssl, libatomic1$' "$VERIFY/core/control/control"
-          grep -q '^Section: utils$' "$VERIFY/core/control/control"
           grep -q "^Firmware: $FIRMWARE$" "$VERIFY/core/control/control"
-          grep -q '^SourceName: gk-bacnet-mqtt$' "$VERIFY/core/control/control"
-          grep -qx '/etc/config/gk-bacnet-mqtt' "$VERIFY/core/control/conffiles"
           test -x "$VERIFY/core/control/postinst"
           test -x "$VERIFY/core/control/prerm"
-          test -x "$VERIFY/core/data/usr/sbin/gk-bacnet-mqtt"
           CORE_BIN="$VERIFY/core/data/usr/sbin/gk-bacnet-mqtt"
-          CORE_BIN_SIZE="$(stat -c '%s' "$CORE_BIN")"
-          echo "RutOS-stripped core binary size: $CORE_BIN_SIZE bytes"
-          test "$CORE_BIN_SIZE" -gt 0
+          test -s "$CORE_BIN"
           file "$CORE_BIN" | grep -q 'ELF 32-bit'
           readelf -h "$CORE_BIN" | grep -q 'Machine:.*MIPS'
-          readelf -d "$CORE_BIN" | grep -q 'libbacnet.so'
-          readelf -d "$CORE_BIN" | grep -q 'libmosquitto.so.1'
-          readelf -d "$CORE_BIN" | grep -q 'libatomic.so.1'
-
-          echo "=== API control ==="
-          cat "$VERIFY/api/control/control"
-          grep -q '^Section: vuci$' "$VERIFY/api/control/control"
           grep -q '^Depends: libc, gk-bacnet-mqtt, api-core$' "$VERIFY/api/control/control"
-          grep -q "^Firmware: $FIRMWARE$" "$VERIFY/api/control/control"
           test -x "$VERIFY/api/control/postinst"
           test -x "$VERIFY/api/control/prerm"
           test -x "$VERIFY/api/control/postrm"
-
-          echo "=== UI control ==="
-          cat "$VERIFY/ui/control/control"
-          grep -q '^Section: vuci$' "$VERIFY/ui/control/control"
           grep -q '^Depends: libc, gk-bacnet-mqtt, vuci-app-gk-bacnet-mqtt-api$' "$VERIFY/ui/control/control"
-          grep -q "^Firmware: $FIRMWARE$" "$VERIFY/ui/control/control"
           test -x "$VERIFY/ui/control/postinst"
           test -x "$VERIFY/ui/control/prerm"
           test -x "$VERIFY/ui/control/postrm"

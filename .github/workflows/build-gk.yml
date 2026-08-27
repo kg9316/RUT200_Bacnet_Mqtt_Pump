@@ -1,4 +1,4 @@
-name: Build GK BACnet MQTT IPK
+name: Full Validate GK BACnet MQTT IPKs
 
 on:
   workflow_dispatch:

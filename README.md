@@ -2,19 +2,12 @@
 
 Native BACnet/IP → MQTT gateway for Teltonika RutOS devices.
 
-The project is not tied to a single router model. The daemon, UCI service and installable package are named `gk-bacnet-mqtt`; hardware families are build targets.
-
 ## Current support
 
 | Target | Devices | RutOS SDK | Status |
 |---|---|---|---|
 | `RUT2M` | RUT200, RUT241, RUT260 | `RUT2M_R_GPL_00.07.24.2.tar.gz` | Build verified |
-| `RUT14X` | RUT140, RUT142, RUT145 | `RUT14X_R_GPL_00.07.24.2.tar.gz` | Pipeline target added; build/runtime still to be verified |
-
-SDK checksums used by CI:
-
-- RUT2M: `d94ad61ba377433ba96432de980b940a`
-- RUT14X: `70eea784f08641d43a18f896e30022c4`
+| `RUT14X` | RUT140, RUT142, RUT145 | `RUT14X_R_GPL_00.07.24.2.tar.gz` | Build verified |
 
 ## Architecture
 
@@ -23,19 +16,34 @@ src/
 ├── main.c
 ├── gateway.h
 ├── util.c
-├── device_table.c
-├── device_table.h
-├── mqtt_client.c
-├── mqtt_client.h
-├── bacnet_client.c
-└── bacnet_client.h
+├── device_table.c/.h
+├── mqtt_client.c/.h
+├── bacnet_client.c/.h
+├── logger.h
+└── status.c/.h
+
+package/
+├── gk-bacnet-mqtt/
+├── vuci-app-gk-bacnet-mqtt-api/
+├── vuci-app-gk-bacnet-mqtt-ui/
+└── build-shims/lib-bacnet/
 ```
 
-The current daemon performs BACnet/IP discovery, object enumeration, metadata reads, Present Value polling, MQTT reconnect handling, retained configuration topics, live value topics and publish-on-change with maximum-age refresh.
+The daemon performs BACnet/IP discovery, object enumeration, metadata reads, Present Value polling, MQTT reconnect handling, retained configuration topics, live value topics and publish-on-change with maximum-age refresh.
 
-## RutOS dependencies
+## Runtime packages
 
-`gk-bacnet-mqtt` uses RutOS/Teltonika runtime packages instead of shipping duplicate libraries:
+The workflow now builds three GK packages per target:
+
+```text
+gk-bacnet-mqtt
+vuci-app-gk-bacnet-mqtt-api
+vuci-app-gk-bacnet-mqtt-ui
+```
+
+The UI package depends on the API package and core daemon. The API package depends on the core daemon.
+
+The core daemon uses RutOS/Teltonika runtime libraries:
 
 ```text
 gk-bacnet-mqtt
@@ -44,33 +52,49 @@ gk-bacnet-mqtt
 └── libatomic
 ```
 
-`lib-bacnet` is the official Teltonika BACnet runtime dependency used by Teltonika's own BACnet Router package. `libmosquitto-ssl` is the RutOS Mosquitto client library with TLS capability.
+`lib-bacnet` is Teltonika's BACnet runtime dependency. The GPL SDK contains `libbacnet.so` but does not expose `lib-bacnet` as a normal package definition, so CI injects a build-time shim that exposes the SDK library to OpenWrt's ELF dependency scanner. The shim itself is not published.
 
-The Teltonika GPL SDK contains `libbacnet.so`, but does not expose `lib-bacnet` as a normal buildable package definition. To let the OpenWrt package build resolve `DEPENDS:=+lib-bacnet`, CI injects a metadata-only build shim from:
+## Logging
 
-```text
-package/build-shims/lib-bacnet/Makefile
+The daemon opens the native RutOS syslog facility as `gk-bacnet-mqtt` and uses INFO/WARN/ERROR messages for startup, MQTT state, reconnects and failures. Existing BACnet stdout/stderr diagnostics remain captured by `procd`.
+
+```sh
+logread -e gk-bacnet-mqtt
+logread -f | grep gk-bacnet-mqtt
 ```
 
-The shim contains no runtime library and is not collected as a release artifact. The generated GK IPK still declares `lib-bacnet` as its runtime dependency, so the real package is expected to be supplied by RutOS Package Manager/opkg on the target device.
+## Runtime status
 
-The build therefore produces only one GK package per target:
-
-```text
-gk-bacnet-mqtt_1.0.0-2_<arch>.ipk
-```
-
-At build time the gateway is linked against the `libbacnet.so` supplied by the corresponding RutOS SDK, while installation declares `lib-bacnet` as the runtime dependency.
-
-## Installed files
+The daemon atomically updates:
 
 ```text
-/usr/sbin/gk-bacnet-mqtt
-/etc/config/gk-bacnet-mqtt
-/etc/init.d/gk-bacnet-mqtt
+/tmp/gk-bacnet-mqtt-status.json
 ```
 
-## Default configuration
+once per second. It contains service/MQTT state, discovered device and point counts, active MQTT endpoint/topic root and poll/discovery/max-age settings. The VuCI API reads this file; no extra HTTP daemon is required.
+
+## VuCI WebUI
+
+Native RutOS VuCI support is included using Teltonika's `ConfigService`, `FunctionService` and Vue/VuCI application structure.
+
+The page provides:
+
+- service running/stopped state
+- MQTT connected/disconnected state
+- discovered BACnet device count
+- discovered BACnet point count
+- enabled state
+- BACnet interface
+- MQTT host and port
+- topic root
+- poll interval
+- discovery interval
+- maximum publish age
+- last 200 matching RutOS log lines
+
+Saving configuration restarts `gk-bacnet-mqtt` so the new settings take effect.
+
+## Default UCI configuration
 
 ```text
 config gateway 'main'
@@ -79,67 +103,42 @@ config gateway 'main'
         option mqtt_host '127.0.0.1'
         option mqtt_port '1883'
         option topic_root 'bacnet'
+        option poll_ms '5000'
+        option discovery_ms '10000'
+        option max_age_sec '300'
 ```
 
 ## GitHub Actions
 
-Workflow:
+Workflow: `.github/workflows/build-gk.yml`.
 
-```text
-.github/workflows/build-gk.yml
-```
+The workflow is manual (`workflow_dispatch`) and builds both RUT2M and RUT14X. A prepared SDK is cached per target/version, so cache hits skip SDK download, feed update, toolchain preparation and Mosquitto compilation.
 
-The workflow is manual only (`workflow_dispatch`) and builds a matrix for `RUT2M` and `RUT14X`.
-
-A prepared SDK is cached per target and SDK version. On a cache hit, the workflow skips SDK download, extraction, feed update and toolchain/Mosquitto preparation.
-
-### Required repository secrets
-
-RUT2M:
+Required secrets:
 
 ```text
 TELTONIKA_SDK_URL
-```
-
-Direct URL for `RUT2M_R_GPL_00.07.24.2.tar.gz`.
-
-RUT14X:
-
-```text
 RUT14X_SDK_URL
 ```
 
-Direct URL for `RUT14X_R_GPL_00.07.24.2.tar.gz`.
-
-The workflow verifies each SDK archive against the configured MD5 before preparing and caching it.
-
-## Build artifacts
-
-A successful matrix run creates one GitHub Actions artifact per target:
-
-```text
-gk-bacnet-mqtt-RUT2M-<commit>
-gk-bacnet-mqtt-RUT14X-<commit>
-```
-
-Each artifact contains only the target-specific `gk-bacnet-mqtt` `.ipk` package.
+A successful target build collects all three target-specific GK `.ipk` packages into its GitHub Actions artifact.
 
 ## Installation
 
-Install the GK package with RutOS Package Manager/opkg. The declared dependencies should resolve the official Teltonika/RutOS BACnet and Mosquitto runtime packages:
+Install the core, API and UI packages together. Their declared dependencies allow `opkg`/RutOS Package Manager to resolve ordering and RutOS libraries.
 
 ```sh
-opkg install /tmp/gk-bacnet-mqtt_*.ipk
+opkg install /tmp/gk-bacnet-mqtt_*.ipk \
+             /tmp/vuci-app-gk-bacnet-mqtt-api_*.ipk \
+             /tmp/vuci-app-gk-bacnet-mqtt-ui_*.ipk
+
 /etc/init.d/gk-bacnet-mqtt enable
 /etc/init.d/gk-bacnet-mqtt start
 ```
 
-The same package can be deployed remotely through Teltonika RMS Task Manager.
+## Still to validate on hardware
 
-## Planned
-
-- structured INFO/WARN/ERROR/DEBUG logging
-- MQTT TLS configuration in UCI/WebUI
-- runtime status endpoint/state file
-- VuCI WebUI and API package
-- additional RutOS hardware families after build/runtime validation
+- VuCI rendering/API compatibility on the exact RUT200/RUT140 firmware build
+- actual availability/resolution of Teltonika `lib-bacnet` through Package Manager
+- BACnet discovery/polling against physical devices
+- MQTT TLS configuration

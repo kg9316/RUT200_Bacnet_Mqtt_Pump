@@ -39,14 +39,7 @@ jobs:
           test "${{ steps.old-cache.outputs.cache-hit }}" = "true"
           test -d sdk
           test -f sdk/include/toplevel.mk
-          test -f sdk/package/feeds/vuci/api.mk
-          test -f sdk/package/feeds/vuci/app.mk
-          test -f sdk/package/feeds/vuci/utils.mk
-
-          echo "=== existing VuCI helpers ==="
-          ls -l sdk/package/feeds/vuci/api.mk \
-                sdk/package/feeds/vuci/app.mk \
-                sdk/package/feeds/vuci/utils.mk
+          test -f sdk/include/package.mk
 
       - name: Inject GK package definitions into SDK
         run: |
@@ -66,26 +59,13 @@ jobs:
           cp -a package/gk-bacnet-mqtt/files/. sdk/package/custom/gk-bacnet-mqtt/files/
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
 
-          # Place the GK VuCI packages under package/custom. Their Makefiles include
-          # ../api.mk and ../app.mk, so copy Teltonika's matching helper files into
-          # package/custom beside the package directories.
-          cp sdk/package/feeds/vuci/api.mk sdk/package/custom/api.mk
-          cp sdk/package/feeds/vuci/app.mk sdk/package/custom/app.mk
-          cp sdk/package/feeds/vuci/utils.mk sdk/package/custom/utils.mk
-
-          for helper in compile-app-gpl.sh gpl.vite.config.js gpl.package.json; do
-            if [ -f "sdk/package/feeds/vuci/$helper" ]; then
-              cp "sdk/package/feeds/vuci/$helper" "sdk/package/custom/$helper"
-            fi
-          done
-
+          # API/UI are now standalone OpenWrt packages and do not depend on
+          # Teltonika's api.mk/app.mk registration helpers.
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/custom/
 
-          echo "=== injected GK packages ==="
-          find sdk/package/custom -maxdepth 2 -type f \
-            \( -name Makefile -o -name api.mk -o -name app.mk -o -name utils.mk \) \
-            -print | sort
+          echo "=== injected GK package Makefiles ==="
+          find sdk/package/custom -maxdepth 2 -name Makefile -print | sort
 
           test -f sdk/package/custom/vuci-app-gk-bacnet-mqtt-api/Makefile
           test -f sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui/Makefile
@@ -99,8 +79,7 @@ jobs:
           make defconfig
 
           echo "=== GK package metadata ==="
-          grep -n -E '^Package: (gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))$' \
-            tmp/.packageinfo || true
+          grep -n -E '^Package: (gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))$' tmp/.packageinfo || true
 
           grep -q '^Package: gk-bacnet-mqtt$' tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' tmp/.packageinfo

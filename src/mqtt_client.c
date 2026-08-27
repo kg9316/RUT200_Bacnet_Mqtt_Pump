@@ -1,4 +1,5 @@
 #include "mqtt_client.h"
+#include "logger.h"
 
 #include <mosquitto.h>
 #include <stdio.h>
@@ -20,10 +21,10 @@ static void mqtt_on_connect(struct mosquitto *mosq, void *userdata, int rc)
     (void)mosq;
     (void)userdata;
     g_mqtt_connected = (rc == 0);
-    fprintf(rc == 0 ? stdout : stderr,
-            "MQTT %s rc=%d\n",
-            rc == 0 ? "connected" : "connect failed",
-            rc);
+    if (rc == 0)
+        LOG_INFOF("MQTT connected to %s:%d", g_mqtt_host, g_mqtt_port);
+    else
+        LOG_ERRORF("MQTT connect failed rc=%d", rc);
 }
 
 static void mqtt_on_disconnect(struct mosquitto *mosq, void *userdata, int rc)
@@ -31,7 +32,7 @@ static void mqtt_on_disconnect(struct mosquitto *mosq, void *userdata, int rc)
     (void)mosq;
     (void)userdata;
     g_mqtt_connected = false;
-    fprintf(stderr, "MQTT disconnected rc=%d\n", rc);
+    LOG_WARNF("MQTT disconnected rc=%d", rc);
 }
 
 static void mqtt_publish_raw(const char *topic, const char *payload, bool retain)
@@ -43,7 +44,7 @@ static void mqtt_publish_raw(const char *topic, const char *payload, bool retain
 
     rc = mosquitto_publish(g_mosq, NULL, topic, (int)strlen(payload), payload, 0, retain);
     if (rc != MOSQ_ERR_SUCCESS) {
-        fprintf(stderr, "MQTT publish failed: %s\n", mosquitto_strerror(rc));
+        LOG_ERRORF("MQTT publish failed topic=%s: %s", topic, mosquitto_strerror(rc));
         g_mqtt_connected = false;
     }
 }
@@ -181,6 +182,11 @@ int mqtt_client_init(void)
     return mosquitto_connect_async(g_mosq, g_mqtt_host, g_mqtt_port, 30);
 }
 
+bool mqtt_client_is_connected(void)
+{
+    return g_mqtt_connected;
+}
+
 void mqtt_client_loop(void)
 {
     int rc;
@@ -191,6 +197,7 @@ void mqtt_client_loop(void)
     rc = mosquitto_loop(g_mosq, 0, 1);
     if (rc != MOSQ_ERR_SUCCESS && rc != MOSQ_ERR_NO_CONN) {
         g_mqtt_connected = false;
+        LOG_WARNF("MQTT loop error: %s; reconnecting", mosquitto_strerror(rc));
         mosquitto_reconnect_async(g_mosq);
     }
 }

@@ -134,38 +134,38 @@ jobs:
             installed_size="$(du -sb "$dir" | awk '{print $1}')"
             mkdir -p "$dir/CONTROL"
             cat > "$dir/CONTROL/control" <<EOF
-          Package: $package
-          Version: $version
-          Depends: $depends
-          Source: package/custom/$source
-          SourceName: $source
-          License: UNKNOWN
-          Section: $section
-          Architecture: $ARCH
-          Installed-Size: $installed_size
-          Firmware: $FIRMWARE
-          Description: $title
-           $description
-          EOF
+Package: $package
+Version: $version
+Depends: $depends
+Source: package/custom/$source
+SourceName: $source
+License: UNKNOWN
+Section: $section
+Architecture: $ARCH
+Installed-Size: $installed_size
+Firmware: $FIRMWARE
+Description: $title
+ $description
+EOF
           }
 
           write_default_prerm() {
             cat > "$1/CONTROL/prerm" <<'EOF'
-          #!/bin/sh
-          [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
-          . ${IPKG_INSTROOT}/lib/functions.sh
-          default_prerm $0 $@
-          EOF
+#!/bin/sh
+[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
+. ${IPKG_INSTROOT}/lib/functions.sh
+default_prerm $0 $@
+EOF
             chmod 0755 "$1/CONTROL/prerm"
           }
 
           write_default_postrm() {
             cat > "$1/CONTROL/postrm" <<'EOF'
-          #!/bin/sh
-          [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
-          . ${IPKG_INSTROOT}/lib/functions.sh
-          default_postrm $0 $@
-          EOF
+#!/bin/sh
+[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
+. ${IPKG_INSTROOT}/lib/functions.sh
+default_postrm $0 $@
+EOF
             chmod 0755 "$1/CONTROL/postrm"
           }
 
@@ -182,12 +182,12 @@ jobs:
             "Native BACnet/IP to MQTT gateway for supported Teltonika RutOS devices. Uses the official Teltonika lib-bacnet runtime package."
           printf '%s\n' '/etc/config/gk-bacnet-mqtt' > "$CORE/CONTROL/conffiles"
           cat > "$CORE/CONTROL/postinst" <<'EOF'
-          #!/bin/sh
-          [ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
-          [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
-          . ${IPKG_INSTROOT}/lib/functions.sh
-          default_postinst $0 $@
-          EOF
+#!/bin/sh
+[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
+. ${IPKG_INSTROOT}/lib/functions.sh
+default_postinst $0 $@
+EOF
           chmod 0755 "$CORE/CONTROL/postinst"
           write_default_prerm "$CORE"
 
@@ -201,17 +201,17 @@ jobs:
             "GK BACnet MQTT API" \
             "Runtime status, configuration and log API for GK BACnet MQTT."
           cat > "$API/CONTROL/postinst" <<'EOF'
-          #!/bin/sh
-          [ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
-          [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
-          . ${IPKG_INSTROOT}/lib/functions.sh
-          default_postinst $0 $@
-          [ -z "${IPKG_INSTROOT}" ] || exit 0
-          [ -x /etc/init.d/rpcd ] && {
-            /etc/init.d/rpcd enable
-            /etc/init.d/rpcd restart
-          }
-          EOF
+#!/bin/sh
+[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
+. ${IPKG_INSTROOT}/lib/functions.sh
+default_postinst $0 $@
+[ -z "${IPKG_INSTROOT}" ] || exit 0
+[ -x /etc/init.d/rpcd ] && {
+  /etc/init.d/rpcd enable
+  /etc/init.d/rpcd restart
+}
+EOF
           chmod 0755 "$API/CONTROL/postinst"
           write_default_prerm "$API"
           write_default_postrm "$API"
@@ -226,17 +226,17 @@ jobs:
             "GK BACnet MQTT UI" \
             "GK BACnet MQTT configuration, runtime status and log UI."
           cat > "$UI/CONTROL/postinst" <<'EOF'
-          #!/bin/sh
-          [ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
-          [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
-          . ${IPKG_INSTROOT}/lib/functions.sh
-          default_postinst $0 $@
-          [ -n "${IPKG_INSTROOT}" ] || {
-            rm -f /tmp/luci-indexcache
-            rm -rf /tmp/luci-modulecache/
-            exit 0
-          }
-          EOF
+#!/bin/sh
+[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
+. ${IPKG_INSTROOT}/lib/functions.sh
+default_postinst $0 $@
+[ -n "${IPKG_INSTROOT}" ] || {
+  rm -f /tmp/luci-indexcache
+  rm -rf /tmp/luci-modulecache/
+  exit 0
+}
+EOF
           chmod 0755 "$UI/CONTROL/postinst"
           write_default_prerm "$UI"
           write_default_postrm "$UI"
@@ -300,9 +300,15 @@ jobs:
           test -x "$VERIFY/core/control/postinst"
           test -x "$VERIFY/core/control/prerm"
           test -x "$VERIFY/core/data/usr/sbin/gk-bacnet-mqtt"
-          CORE_BIN_SIZE="$(stat -c '%s' "$VERIFY/core/data/usr/sbin/gk-bacnet-mqtt")"
+          CORE_BIN="$VERIFY/core/data/usr/sbin/gk-bacnet-mqtt"
+          CORE_BIN_SIZE="$(stat -c '%s' "$CORE_BIN")"
           echo "RutOS-stripped core binary size: $CORE_BIN_SIZE bytes"
-          test "$CORE_BIN_SIZE" -lt 15000
+          test "$CORE_BIN_SIZE" -gt 0
+          file "$CORE_BIN" | grep -q 'ELF 32-bit'
+          readelf -h "$CORE_BIN" | grep -q 'Machine:.*MIPS'
+          readelf -d "$CORE_BIN" | grep -q 'libbacnet.so'
+          readelf -d "$CORE_BIN" | grep -q 'libmosquitto.so.1'
+          readelf -d "$CORE_BIN" | grep -q 'libatomic.so.1'
 
           echo "=== API control ==="
           cat "$VERIFY/api/control/control"

@@ -1,19 +1,29 @@
 include $(TOPDIR)/rules.mk
 
-APP_NAME:=vuci-app-gk-bacnet-mqtt-ui
-PKG_NAME:=$(APP_NAME)
-APP_TITLE:=VuCI UI Support for GK BACnet MQTT
-APP_APP_NAME:=gk-bacnet-mqtt
-APP_DEPENDS:=+gk-bacnet-mqtt +vuci-app-gk-bacnet-mqtt-api
-CLOSED_GPL_INSTALL:=y
+PKG_NAME:=vuci-app-gk-bacnet-mqtt-ui
+PKG_VERSION:=1.0.0
+PKG_RELEASE:=1
 
-ifeq (m,$(CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui))
-	APP_TLT_NAME:=GK BACnet MQTT
-	APP_ROUTER:=$(TLT_PLATFORM_NAME)
-endif
+include $(INCLUDE_DIR)/package.mk
 
-define Package/$(PKG_NAME)/description
-	GK BACnet MQTT configuration, runtime status and log UI
+define Package/$(PKG_NAME)
+  SECTION:=vuci
+  CATEGORY:=VuCI
+  SUBMENU:=Applications/UI
+  TITLE:=GK BACnet MQTT UI
+  DEPENDS:=+gk-bacnet-mqtt +vuci-app-gk-bacnet-mqtt-api
 endef
 
-include ../app.mk
+define Package/$(PKG_NAME)/description
+  GK BACnet MQTT configuration, runtime status and log UI.
+endef
+
+define Build/Compile
+endef
+
+define Package/$(PKG_NAME)/install
+	$(INSTALL_DIR) $(1)
+	$(CP) ./files/* $(1)/
+endef
+
+$(eval $(call BuildPackage,$(PKG_NAME)))

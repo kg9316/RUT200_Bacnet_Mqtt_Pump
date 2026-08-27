@@ -167,9 +167,24 @@ jobs:
           set -euo pipefail
           for ipk in dist/*.ipk; do
             echo "=== $(basename "$ipk") ==="
-            ar t "$ipk"
-            ar t "$ipk" | grep -q '^control.tar'
-            ar t "$ipk" | grep -q '^data.tar'
+            file "$ipk"
+
+            if ar t "$ipk" >/tmp/ipk-members 2>/dev/null; then
+              cat /tmp/ipk-members
+              grep -q '^control.tar' /tmp/ipk-members
+              grep -q '^data.tar' /tmp/ipk-members
+            elif tar -tzf "$ipk" >/tmp/ipk-members 2>/dev/null; then
+              cat /tmp/ipk-members
+              grep -q 'control.tar' /tmp/ipk-members
+              grep -q 'data.tar' /tmp/ipk-members
+            elif tar -tf "$ipk" >/tmp/ipk-members 2>/dev/null; then
+              cat /tmp/ipk-members
+              grep -q 'control.tar' /tmp/ipk-members
+              grep -q 'data.tar' /tmp/ipk-members
+            else
+              echo "ERROR: unsupported or invalid IPK container: $ipk"
+              exit 1
+            fi
           done
 
       - uses: actions/upload-artifact@v4

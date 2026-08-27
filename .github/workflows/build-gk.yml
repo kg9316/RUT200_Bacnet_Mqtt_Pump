@@ -85,6 +85,7 @@ jobs:
           test -f "$LIBBACNET"
           test -f sdk/package/feeds/vuci/app.mk
           test -f sdk/package/feeds/vuci/api.mk
+          test -f sdk/package/feeds/vuci/utils.mk
 
       - name: Save prepared RutOS SDK
         if: steps.sdk-cache.outputs.cache-hit != 'true'
@@ -154,10 +155,17 @@ jobs:
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
 
-          # Keep GK VuCI packages local. Their Makefiles include ../api.mk and ../app.mk,
-          # so expose Teltonika's real VuCI helpers one directory above them.
+          # Local VuCI packages include ../api.mk or ../app.mk. Copy the complete
+          # sibling helper set those Teltonika makefiles expect.
           cp sdk/package/feeds/vuci/api.mk sdk/package/custom/api.mk
           cp sdk/package/feeds/vuci/app.mk sdk/package/custom/app.mk
+          cp sdk/package/feeds/vuci/utils.mk sdk/package/custom/utils.mk
+          for f in compile-app-gpl.sh gpl.vite.config.js gpl.package.json; do
+            if [ -f "sdk/package/feeds/vuci/$f" ]; then
+              cp "sdk/package/feeds/vuci/$f" "sdk/package/custom/$f"
+            fi
+          done
+
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/custom/
 
@@ -165,6 +173,7 @@ jobs:
           test -f sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui/Makefile
           test -f sdk/package/custom/api.mk
           test -f sdk/package/custom/app.mk
+          test -f sdk/package/custom/utils.mk
 
       - name: Enable and build GK packages
         working-directory: sdk
@@ -172,6 +181,10 @@ jobs:
           set -euo pipefail
           rm -rf tmp
           make defconfig
+
+          echo "Package metadata before selection:"
+          grep -R -n -E 'vuci-app-gk-bacnet-mqtt-(api|ui)' tmp/.packageinfo* tmp/pkginfo* 2>/dev/null || true
+
           printf '%s\n' \
             'CONFIG_PACKAGE_gk-bacnet-mqtt=m' \
             'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' \

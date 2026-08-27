@@ -16,15 +16,9 @@ jobs:
       matrix:
         include:
           - target: RUT2M
-            sdk_archive: RUT2M_R_GPL_00.07.24.2.tar.gz
-            sdk_md5: d94ad61ba377433ba96432de980b940a
-            sdk_secret: TELTONIKA_SDK_URL
-            cache_key: gk-prepared-sdk-RUT2M-00.07.24.2-v1
+            cache_key: gk-prepared-sdk-RUT2M-00.07.24.2-v2-vuci
           - target: RUT14X
-            sdk_archive: RUT14X_R_GPL_00.07.24.2.tar.gz
-            sdk_md5: 70eea784f08641d43a18f896e30022c4
-            sdk_secret: RUT14X_SDK_URL
-            cache_key: gk-prepared-sdk-RUT14X-00.07.24.2-v1
+            cache_key: gk-prepared-sdk-RUT14X-00.07.24.2-v2-vuci
 
     steps:
       - uses: actions/checkout@v4
@@ -32,73 +26,50 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y binutils binutils-gold bison build-essential bzip2 ca-certificates curl cmake default-jdk device-tree-compiler devscripts ecj file flex fuse g++ gawk gcc gcovr gengetopt gettext git gnupg groff gperf help2man java-wrappers jq libc6-dev libffi-dev libexpat-dev libncurses5-dev libpcre3-dev libsqlite3-dev libssl-dev libxml-parser-perl lz4 liblz4-dev libzstd-dev make ocaml ocaml-findlib ocaml-nox patch pkg-config psmisc python-is-python3 python3.11 python3.11-dev python3-setuptools python3-yaml rsync ruby sharutils subversion swig u-boot-tools unzip uuid-dev vim-common wget zip zlib1g-dev gcc-multilib g++-multilib
-          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-          sudo apt-get install -y nodejs
+          sudo apt-get install -y \
+            binutils binutils-gold bison build-essential bzip2 ca-certificates curl cmake \
+            default-jdk device-tree-compiler devscripts ecj file flex fuse g++ gawk gcc gcovr \
+            gengetopt gettext git gnupg groff gperf help2man java-wrappers jq libc6-dev \
+            libffi-dev libexpat-dev libncurses5-dev libpcre3-dev libsqlite3-dev libssl-dev \
+            libxml-parser-perl lz4 liblz4-dev libzstd-dev make ocaml ocaml-findlib ocaml-nox \
+            patch pkg-config psmisc python-is-python3 python3.11 python3.11-dev python3-setuptools \
+            python3-yaml rsync ruby sharutils subversion swig u-boot-tools unzip uuid-dev \
+            vim-common wget zip zlib1g-dev gcc-multilib g++-multilib
 
-      - name: Restore prepared RutOS SDK
+      - name: Restore refreshed RutOS SDK
         id: sdk-cache
         uses: actions/cache/restore@v4
         with:
           path: sdk
           key: ${{ matrix.cache_key }}-${{ runner.os }}
-          restore-keys: |
-            ${{ matrix.cache_key }}-
 
-      - name: Download RutOS SDK
-        if: steps.sdk-cache.outputs.cache-hit != 'true'
-        env:
-          SDK_URL: ${{ secrets[matrix.sdk_secret] }}
-        run: |
-          set -euo pipefail
-          test -n "${SDK_URL:-}" || { echo "Missing repository secret ${{ matrix.sdk_secret }}"; exit 1; }
-          curl -fL --retry 4 "$SDK_URL" -o "$RUNNER_TEMP/${{ matrix.sdk_archive }}"
-          echo "${{ matrix.sdk_md5 }}  $RUNNER_TEMP/${{ matrix.sdk_archive }}" | md5sum -c -
-          mkdir "$GITHUB_WORKSPACE/sdk"
-          tar -xzf "$RUNNER_TEMP/${{ matrix.sdk_archive }}" -C "$GITHUB_WORKSPACE/sdk" --strip-components=1
-
-      - name: Update feeds
-        if: steps.sdk-cache.outputs.cache-hit != 'true'
-        working-directory: sdk
-        run: ./scripts/feeds update -a
-
-      - name: Prepare toolchain and Mosquitto
-        if: steps.sdk-cache.outputs.cache-hit != 'true'
-        working-directory: sdk
-        run: |
-          make tools/install -j2
-          make toolchain/install -j2
-          make package/mosquitto/compile -j2
-
-      - name: Verify prepared SDK
+      - name: Require exact refreshed cache hit
         run: |
           set -euo pipefail
           echo "Target=${{ matrix.target }} cache-hit=${{ steps.sdk-cache.outputs.cache-hit }}"
-          TOOLCHAIN_DIR="$(find sdk/staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
-          SYSROOT="$(find sdk/staging_dir -maxdepth 1 -type d -name 'target-*' | head -1)"
-          MOSQDIR="$(find sdk/build_dir -type d -path '*/mosquitto-ssl/mosquitto-2.0.21' | head -1)"
-          LIBBACNET="$(find sdk/package/teltonika/libs/lib-bacnet -type f -path '*/usr/lib/libbacnet.so' | head -1)"
-          test -n "$TOOLCHAIN_DIR"
-          test -n "$SYSROOT"
-          test -n "$MOSQDIR"
-          test -f "$MOSQDIR/lib/libmosquitto.so.1"
-          test -f "$LIBBACNET"
-          test -f sdk/package/feeds/vuci/app.mk
-          test -f sdk/package/feeds/vuci/api.mk
-          test -f sdk/package/feeds/vuci/utils.mk
+          test "${{ steps.sdk-cache.outputs.cache-hit }}" = "true"
+          test -d sdk
+          test -f sdk/include/toplevel.mk
+          test -d sdk/package/custom/gk-bacnet-mqtt
+          test -d sdk/package/custom/lib-bacnet
+          test -d sdk/package/custom/vuci-app-gk-bacnet-mqtt-api
+          test -d sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
 
-      - name: Save prepared RutOS SDK
-        if: steps.sdk-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: sdk
-          key: ${{ matrix.cache_key }}-${{ runner.os }}
+          grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' sdk/.config
+          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' sdk/.config
+          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' sdk/.config
+
+          echo "=== cached GK packages ==="
+          grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' sdk/.config
 
       - name: Get BACnet Stack 1.3.8 headers
         run: |
-          curl -fL --retry 4 https://github.com/bacnet-stack/bacnet-stack/archive/refs/tags/bacnet-stack-1.3.8.tar.gz -o "$RUNNER_TEMP/bacnet.tar.gz"
+          curl -fL --retry 4 \
+            https://github.com/bacnet-stack/bacnet-stack/archive/refs/tags/bacnet-stack-1.3.8.tar.gz \
+            -o "$RUNNER_TEMP/bacnet.tar.gz"
           mkdir "$RUNNER_TEMP/bacnet-stack"
-          tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
+          tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" \
+            -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
 
       - name: Cross compile GK gateway
         run: |
@@ -118,8 +89,8 @@ jobs:
           test -x "$STRIP"
           test -d "$SYSROOT"
           test -n "$MOSQDIR"
-          test -f "$LIBBACNET"
           test -f "$MOSQDIR/lib/libmosquitto.so.1"
+          test -f "$LIBBACNET"
 
           "$CC" -Os --sysroot="$SYSROOT" \
             -I"$GITHUB_WORKSPACE/src" -I"$BAC/src" -I"$MOSQDIR/include" \
@@ -132,73 +103,60 @@ jobs:
             "$LIBBACNET" \
             "$MOSQDIR/lib/libmosquitto.so.1" \
             -L"$SDK/staging_dir/usr/lib" \
-            -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
-            -latomic -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
+            -Wl,-rpath,/usr/lib \
+            -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
+            -latomic \
+            -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
 
           "$STRIP" "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           file "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep NEEDED
 
-      - name: Install custom package definitions
+      - name: Refresh GK package contents in cached SDK
         run: |
           set -euo pipefail
 
-          rm -rf \
-            sdk/package/custom/gk-bacnet-mqtt \
-            sdk/package/custom/lib-bacnet \
-            sdk/package/custom/vuci-app-gk-bacnet-mqtt-api \
-            sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
-
-          mkdir -p sdk/package/custom/gk-bacnet-mqtt/files sdk/package/custom/lib-bacnet
+          # Keep the package definitions that were proven and cached by
+          # Refresh GK RutOS SDK Cache. Only refresh repository-owned contents.
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
-          cp package/gk-bacnet-mqtt/files/* sdk/package/custom/gk-bacnet-mqtt/files/
+          rm -rf sdk/package/custom/gk-bacnet-mqtt/files
+          mkdir -p sdk/package/custom/gk-bacnet-mqtt/files
+          cp -a package/gk-bacnet-mqtt/files/. sdk/package/custom/gk-bacnet-mqtt/files/
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
+
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
 
-          # Local VuCI packages include ../api.mk or ../app.mk. Copy the complete
-          # sibling helper set those Teltonika makefiles expect.
-          cp sdk/package/feeds/vuci/api.mk sdk/package/custom/api.mk
-          cp sdk/package/feeds/vuci/app.mk sdk/package/custom/app.mk
-          cp sdk/package/feeds/vuci/utils.mk sdk/package/custom/utils.mk
-          for f in compile-app-gpl.sh gpl.vite.config.js gpl.package.json; do
-            if [ -f "sdk/package/feeds/vuci/$f" ]; then
-              cp "sdk/package/feeds/vuci/$f" "sdk/package/custom/$f"
-            fi
-          done
-
+          rm -rf sdk/package/custom/vuci-app-gk-bacnet-mqtt-api
+          rm -rf sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/custom/
 
-          test -f sdk/package/custom/vuci-app-gk-bacnet-mqtt-api/Makefile
-          test -f sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui/Makefile
-          test -f sdk/package/custom/api.mk
-          test -f sdk/package/custom/app.mk
-          test -f sdk/package/custom/utils.mk
-
-      - name: Enable and build GK packages
+      - name: Verify package metadata
         working-directory: sdk
         run: |
           set -euo pipefail
           rm -rf tmp
           make defconfig
 
-          echo "Package metadata before selection:"
-          grep -R -n -E 'vuci-app-gk-bacnet-mqtt-(api|ui)' tmp/.packageinfo* tmp/pkginfo* 2>/dev/null || true
+          echo "=== GK package metadata ==="
+          grep -n -E '^Package: (gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))$' \
+            tmp/.packageinfo
 
-          printf '%s\n' \
-            'CONFIG_PACKAGE_gk-bacnet-mqtt=m' \
-            'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' \
-            'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' >> .config
-          make defconfig
+          grep -q '^Package: gk-bacnet-mqtt$' tmp/.packageinfo
+          grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' tmp/.packageinfo
+          grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo
 
-          echo "Selected GK packages:"
-          grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' .config || true
+          echo "=== selected GK packages ==="
+          grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' .config
 
-          grep -q '^CONFIG_PACKAGE_lib-bacnet=m' .config || grep -q '^CONFIG_PACKAGE_lib-bacnet=y' .config
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
 
+      - name: Build GK IPKs
+        working-directory: sdk
+        run: |
+          set -euo pipefail
           make package/custom/gk-bacnet-mqtt/compile -j1 V=s
           make package/custom/vuci-app-gk-bacnet-mqtt-api/compile -j1 V=s
           make package/custom/vuci-app-gk-bacnet-mqtt-ui/compile -j1 V=s
@@ -208,9 +166,17 @@ jobs:
           set -euo pipefail
           rm -rf dist
           mkdir dist
-          find sdk/bin/packages -type f -iname '*gk*bacnet*mqtt*.ipk' -exec cp -v {} dist/ \;
+
+          find sdk/bin/packages -type f \
+            \( -name 'gk-bacnet-mqtt_*.ipk' \
+               -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' \
+               -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' \) \
+            -exec cp -v {} dist/ \;
+
+          echo "=== output packages ==="
           ls -lh dist
-          test "$(find dist -name '*.ipk' | wc -l)" -ge 3
+
+          test "$(find dist -maxdepth 1 -name '*.ipk' | wc -l)" -eq 3
 
       - uses: actions/upload-artifact@v4
         with:

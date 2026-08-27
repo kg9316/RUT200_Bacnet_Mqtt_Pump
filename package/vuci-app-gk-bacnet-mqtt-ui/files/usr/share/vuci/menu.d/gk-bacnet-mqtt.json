@@ -1,0 +1,8 @@
+{
+  "services/gk-bacnet-mqtt": {
+    "title": "GK BACnet MQTT",
+    "index": 510,
+    "view": "services/GkBacnetMqtt",
+    "acls": ["services/gk-bacnet-mqtt"]
+  }
+}

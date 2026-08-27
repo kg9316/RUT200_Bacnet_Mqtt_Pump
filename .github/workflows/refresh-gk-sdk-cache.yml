@@ -46,34 +46,36 @@ jobs:
           test "${{ steps.old-cache.outputs.cache-hit }}" = "true"
           test -d sdk
           test -x sdk/scripts/feeds
+          test -d sdk/feeds/packages
+          test -d sdk/feeds/vuci
 
-      - name: Install only luasrcdiet and build host tool
+      - name: Install cached luasrcdiet and build host tool
         working-directory: sdk
         run: |
           set -euo pipefail
 
-          # Do NOT run `feeds install -a` here. RutOS 00.07.24.2 contains
-          # feed packages that generate invalid Kconfig when all are installed.
-          # We need only luasrcdiet for the VuCI API build.
-          ./scripts/feeds update packages
+          # IMPORTANT: do not update any feed from the network. This SDK is tied
+          # to its shipped feed revisions. Updating packages can generate Kconfig
+          # incompatible with RutOS 00.07.24.2 (for example ntfs-3g).
+          test -f feeds/packages/lang/luasrcdiet/Makefile
 
-          rm -f package/feeds/packages/luasrcdiet
+          rm -rf package/feeds/packages/luasrcdiet
           ./scripts/feeds install -p packages luasrcdiet
-
-          echo "=== luasrcdiet source/installed definition ==="
-          find feeds/packages package/feeds/packages -type f -path '*/luasrcdiet/Makefile' -print 2>/dev/null || true
           test -f package/feeds/packages/luasrcdiet/Makefile
 
-          echo "Building luasrcdiet host dependency"
+          echo "Building luasrcdiet host dependency from cached feed revision"
           make package/feeds/packages/luasrcdiet/host/compile -j1 V=s
+          test -x staging_dir/hostpkg/bin/luasrcdiet
 
-      - name: Install GK package definitions into restored SDK
+      - name: Add GK packages to restored SDK
         run: |
           set -euo pipefail
 
           rm -rf \
             sdk/package/custom/gk-bacnet-mqtt \
             sdk/package/custom/lib-bacnet \
+            sdk/feeds/vuci/vuci-app-gk-bacnet-mqtt-api \
+            sdk/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui \
             sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api \
             sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
 
@@ -85,15 +87,30 @@ jobs:
           cp -a package/gk-bacnet-mqtt/files/. sdk/package/custom/gk-bacnet-mqtt/files/
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
 
-          # Put our VuCI packages beside Teltonika's native helpers.
-          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/
-          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
+          # Add our VuCI packages to the SOURCE feed, not directly to package/feeds.
+          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/feeds/vuci/
+          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/feeds/vuci/
 
-          test -f sdk/package/feeds/vuci/api.mk
-          test -f sdk/package/feeds/vuci/app.mk
-          test -f sdk/package/feeds/vuci/utils.mk
-          test -f sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api/Makefile
-          test -f sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/Makefile
+          test -f sdk/feeds/vuci/vuci-app-gk-bacnet-mqtt-api/Makefile
+          test -f sdk/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/Makefile
+
+      - name: Re-index local VuCI feed and install only GK VuCI packages
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+
+          # -i regenerates the feed index from the already present local feed tree;
+          # it does not pull a newer feed revision from the network.
+          ./scripts/feeds update -i vuci
+
+          ./scripts/feeds install -f -p vuci vuci-app-gk-bacnet-mqtt-api
+          ./scripts/feeds install -f -p vuci vuci-app-gk-bacnet-mqtt-ui
+
+          test -e package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api
+          test -e package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
+
+          echo "=== installed GK VuCI feed packages ==="
+          ls -ld package/feeds/vuci/vuci-app-gk-bacnet-mqtt-*
 
       - name: Regenerate package metadata and verify GK VuCI packages
         working-directory: sdk

@@ -47,28 +47,22 @@ jobs:
           test -d sdk
           test -x sdk/scripts/feeds
 
-      - name: Refresh feeds and prepare luasrcdiet host tool
+      - name: Install only luasrcdiet and build host tool
         working-directory: sdk
         run: |
           set -euo pipefail
 
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          # Do NOT run `feeds install -a` here. RutOS 00.07.24.2 contains
+          # feed packages that generate invalid Kconfig when all are installed.
+          # We need only luasrcdiet for the VuCI API build.
+          ./scripts/feeds update packages
 
-          echo "=== luasrcdiet definitions after feeds install ==="
-          find package feeds -type f -path '*/luasrcdiet/Makefile' -print 2>/dev/null || true
+          rm -f package/feeds/packages/luasrcdiet
+          ./scripts/feeds install -p packages luasrcdiet
 
-          # In this RutOS SDK the source definition is under feeds/packages/lang,
-          # while OpenWrt builds packages from package/feeds/packages.
-          if [ ! -f package/feeds/packages/luasrcdiet/Makefile ]; then
-            echo "Installing luasrcdiet explicitly from packages feed"
-            ./scripts/feeds install -p packages luasrcdiet
-          fi
-
+          echo "=== luasrcdiet source/installed definition ==="
+          find feeds/packages package/feeds/packages -type f -path '*/luasrcdiet/Makefile' -print 2>/dev/null || true
           test -f package/feeds/packages/luasrcdiet/Makefile
-
-          echo "=== installed luasrcdiet package ==="
-          ls -la package/feeds/packages/luasrcdiet
 
           echo "Building luasrcdiet host dependency"
           make package/feeds/packages/luasrcdiet/host/compile -j1 V=s
@@ -91,6 +85,7 @@ jobs:
           cp -a package/gk-bacnet-mqtt/files/. sdk/package/custom/gk-bacnet-mqtt/files/
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
 
+          # Put our VuCI packages beside Teltonika's native helpers.
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
 

@@ -83,6 +83,8 @@ jobs:
           test -n "$MOSQDIR"
           test -f "$MOSQDIR/lib/libmosquitto.so.1"
           test -f "$LIBBACNET"
+          test -f sdk/package/feeds/vuci/app.mk
+          test -f sdk/package/feeds/vuci/api.mk
 
       - name: Save prepared RutOS SDK
         if: steps.sdk-cache.outputs.cache-hit != 'true'
@@ -129,6 +131,7 @@ jobs:
             "$GITHUB_WORKSPACE/src/device_table.c" \
             "$GITHUB_WORKSPACE/src/mqtt_client.c" \
             "$GITHUB_WORKSPACE/src/bacnet_client.c" \
+            "$GITHUB_WORKSPACE/src/status.c" \
             "$LIBBACNET" \
             "$MOSQDIR/lib/libmosquitto.so.1" \
             -L"$SDK/staging_dir/usr/lib" \
@@ -142,29 +145,40 @@ jobs:
       - name: Install custom package definitions
         run: |
           rm -rf sdk/package/custom/gk-bacnet-mqtt sdk/package/custom/lib-bacnet
+          rm -rf sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
           mkdir -p sdk/package/custom/gk-bacnet-mqtt/files sdk/package/custom/lib-bacnet
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           cp package/gk-bacnet-mqtt/files/* sdk/package/custom/gk-bacnet-mqtt/files/
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
+          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/
+          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
 
-      - name: Enable and build GK IPK
+      - name: Enable and build GK packages
         working-directory: sdk
         run: |
           rm -rf tmp
           make defconfig
-          printf '%s\n' 'CONFIG_PACKAGE_gk-bacnet-mqtt=m' >> .config
+          printf '%s\n' \
+            'CONFIG_PACKAGE_gk-bacnet-mqtt=m' \
+            'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' \
+            'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' >> .config
           make defconfig
           grep -q '^CONFIG_PACKAGE_lib-bacnet=m' .config || grep -q '^CONFIG_PACKAGE_lib-bacnet=y' .config
+          grep '^CONFIG_PACKAGE_gk-bacnet-mqtt=' .config
+          grep '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=' .config
+          grep '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=' .config
           make package/custom/gk-bacnet-mqtt/compile -j1 V=s
+          make package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api/compile -j1 V=s
+          make package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/compile -j1 V=s
 
-      - name: Collect GK IPK
+      - name: Collect GK IPKs
         run: |
           rm -rf dist
           mkdir dist
           find sdk/bin/packages -type f -iname '*gk*bacnet*mqtt*.ipk' -exec cp -v {} dist/ \;
           ls -lh dist
-          test "$(find dist -name '*.ipk' | wc -l)" -ge 1
+          test "$(find dist -name '*.ipk' | wc -l)" -ge 3
 
       - uses: actions/upload-artifact@v4
         with:

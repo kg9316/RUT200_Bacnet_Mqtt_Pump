@@ -25,13 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential gawk git gettext libncurses5-dev libssl-dev \
-            python3 python3-setuptools rsync unzip zlib1g-dev file wget curl
-
       - name: Restore old prepared SDK cache
         id: old-cache
         uses: actions/cache/restore@v4
@@ -39,45 +32,31 @@ jobs:
           path: sdk
           key: ${{ matrix.old_cache_key }}-${{ runner.os }}
 
-      - name: Require exact old cache hit
+      - name: Verify restored SDK
         run: |
           set -euo pipefail
           echo "cache-hit=${{ steps.old-cache.outputs.cache-hit }}"
           test "${{ steps.old-cache.outputs.cache-hit }}" = "true"
           test -d sdk
-          test -x sdk/scripts/feeds
-          test -d sdk/feeds/packages
-          test -d sdk/feeds/vuci
+          test -f sdk/include/toplevel.mk
+          test -f sdk/package/feeds/vuci/api.mk
+          test -f sdk/package/feeds/vuci/app.mk
+          test -f sdk/package/feeds/vuci/utils.mk
 
-      - name: Install cached luasrcdiet and build host tool
-        working-directory: sdk
-        run: |
-          set -euo pipefail
+          echo "=== existing VuCI helpers ==="
+          ls -l sdk/package/feeds/vuci/api.mk \
+                sdk/package/feeds/vuci/app.mk \
+                sdk/package/feeds/vuci/utils.mk
 
-          # IMPORTANT: do not update any feed from the network. This SDK is tied
-          # to its shipped feed revisions. Updating packages can generate Kconfig
-          # incompatible with RutOS 00.07.24.2 (for example ntfs-3g).
-          test -f feeds/packages/lang/luasrcdiet/Makefile
-
-          rm -rf package/feeds/packages/luasrcdiet
-          ./scripts/feeds install -p packages luasrcdiet
-          test -f package/feeds/packages/luasrcdiet/Makefile
-
-          echo "Building luasrcdiet host dependency from cached feed revision"
-          make package/feeds/packages/luasrcdiet/host/compile -j1 V=s
-          test -x staging_dir/hostpkg/bin/luasrcdiet
-
-      - name: Add GK packages to restored SDK
+      - name: Inject GK package definitions into SDK
         run: |
           set -euo pipefail
 
           rm -rf \
             sdk/package/custom/gk-bacnet-mqtt \
             sdk/package/custom/lib-bacnet \
-            sdk/feeds/vuci/vuci-app-gk-bacnet-mqtt-api \
-            sdk/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui \
-            sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api \
-            sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
+            sdk/package/custom/vuci-app-gk-bacnet-mqtt-api \
+            sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
 
           mkdir -p \
             sdk/package/custom/gk-bacnet-mqtt/files \
@@ -87,32 +66,31 @@ jobs:
           cp -a package/gk-bacnet-mqtt/files/. sdk/package/custom/gk-bacnet-mqtt/files/
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
 
-          # Add our VuCI packages to the SOURCE feed, not directly to package/feeds.
-          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/feeds/vuci/
-          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/feeds/vuci/
+          # Place the GK VuCI packages under package/custom. Their Makefiles include
+          # ../api.mk and ../app.mk, so copy Teltonika's matching helper files into
+          # package/custom beside the package directories.
+          cp sdk/package/feeds/vuci/api.mk sdk/package/custom/api.mk
+          cp sdk/package/feeds/vuci/app.mk sdk/package/custom/app.mk
+          cp sdk/package/feeds/vuci/utils.mk sdk/package/custom/utils.mk
 
-          test -f sdk/feeds/vuci/vuci-app-gk-bacnet-mqtt-api/Makefile
-          test -f sdk/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/Makefile
+          for helper in compile-app-gpl.sh gpl.vite.config.js gpl.package.json; do
+            if [ -f "sdk/package/feeds/vuci/$helper" ]; then
+              cp "sdk/package/feeds/vuci/$helper" "sdk/package/custom/$helper"
+            fi
+          done
 
-      - name: Re-index local VuCI feed and install only GK VuCI packages
-        working-directory: sdk
-        run: |
-          set -euo pipefail
+          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
+          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/custom/
 
-          # -i regenerates the feed index from the already present local feed tree;
-          # it does not pull a newer feed revision from the network.
-          ./scripts/feeds update -i vuci
+          echo "=== injected GK packages ==="
+          find sdk/package/custom -maxdepth 2 -type f \
+            \( -name Makefile -o -name api.mk -o -name app.mk -o -name utils.mk \) \
+            -print | sort
 
-          ./scripts/feeds install -f -p vuci vuci-app-gk-bacnet-mqtt-api
-          ./scripts/feeds install -f -p vuci vuci-app-gk-bacnet-mqtt-ui
+          test -f sdk/package/custom/vuci-app-gk-bacnet-mqtt-api/Makefile
+          test -f sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui/Makefile
 
-          test -e package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api
-          test -e package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
-
-          echo "=== installed GK VuCI feed packages ==="
-          ls -ld package/feeds/vuci/vuci-app-gk-bacnet-mqtt-*
-
-      - name: Regenerate package metadata and verify GK VuCI packages
+      - name: Regenerate package metadata
         working-directory: sdk
         run: |
           set -euo pipefail
@@ -121,11 +99,21 @@ jobs:
           make defconfig
 
           echo "=== GK package metadata ==="
-          grep -R -n -E 'Package: (gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))' \
-            tmp/.packageinfo* tmp/pkginfo* 2>/dev/null || true
+          grep -n -E '^Package: (gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))$' \
+            tmp/.packageinfo || true
 
-          grep -R -q 'Package: vuci-app-gk-bacnet-mqtt-api' tmp 2>/dev/null
-          grep -R -q 'Package: vuci-app-gk-bacnet-mqtt-ui' tmp 2>/dev/null
+          grep -q '^Package: gk-bacnet-mqtt$' tmp/.packageinfo
+          grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' tmp/.packageinfo
+          grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo
+
+      - name: Enable GK packages in cached SDK
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+
+          sed -i '/^CONFIG_PACKAGE_gk-bacnet-mqtt=/d' .config
+          sed -i '/^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=/d' .config
+          sed -i '/^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=/d' .config
 
           printf '%s\n' \
             'CONFIG_PACKAGE_gk-bacnet-mqtt=m' \
@@ -134,7 +122,7 @@ jobs:
 
           make defconfig
 
-          echo "=== Selected GK packages ==="
+          echo "=== selected GK packages ==="
           grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' .config || true
 
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config

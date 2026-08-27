@@ -83,8 +83,8 @@ jobs:
           test -n "$MOSQDIR"
           test -f "$MOSQDIR/lib/libmosquitto.so.1"
           test -f "$LIBBACNET"
-          test -f sdk/package/feeds/vuci/app.mk
-          test -f sdk/package/feeds/vuci/api.mk
+          test -f sdk/feeds/vuci/app.mk
+          test -f sdk/feeds/vuci/api.mk
 
       - name: Save prepared RutOS SDK
         if: steps.sdk-cache.outputs.cache-hit != 'true'
@@ -144,19 +144,33 @@ jobs:
 
       - name: Install custom package definitions
         run: |
+          set -euo pipefail
+
           rm -rf sdk/package/custom/gk-bacnet-mqtt sdk/package/custom/lib-bacnet
-          rm -rf sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
           mkdir -p sdk/package/custom/gk-bacnet-mqtt/files sdk/package/custom/lib-bacnet
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           cp package/gk-bacnet-mqtt/files/* sdk/package/custom/gk-bacnet-mqtt/files/
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
-          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/
-          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
+
+          # VuCI packages must be registered through the vuci feed index.
+          rm -rf sdk/feeds/vuci/vuci-app-gk-bacnet-mqtt-api sdk/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
+          rm -rf sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
+          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/feeds/vuci/
+          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/feeds/vuci/
+
+          cd sdk
+          ./scripts/feeds update -i vuci
+          ./scripts/feeds install -f -p vuci vuci-app-gk-bacnet-mqtt-api
+          ./scripts/feeds install -f -p vuci vuci-app-gk-bacnet-mqtt-ui
+
+          test -e package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api
+          test -e package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
 
       - name: Enable and build GK packages
         working-directory: sdk
         run: |
+          set -euo pipefail
           rm -rf tmp
           make defconfig
           printf '%s\n' \
@@ -164,16 +178,22 @@ jobs:
             'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' \
             'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' >> .config
           make defconfig
+
+          echo "Selected GK packages:"
+          grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' .config || true
+
           grep -q '^CONFIG_PACKAGE_lib-bacnet=m' .config || grep -q '^CONFIG_PACKAGE_lib-bacnet=y' .config
-          grep '^CONFIG_PACKAGE_gk-bacnet-mqtt=' .config
-          grep '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=' .config
-          grep '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=' .config
+          grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
+          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
+          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
+
           make package/custom/gk-bacnet-mqtt/compile -j1 V=s
           make package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api/compile -j1 V=s
           make package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/compile -j1 V=s
 
       - name: Collect GK IPKs
         run: |
+          set -euo pipefail
           rm -rf dist
           mkdir dist
           find sdk/bin/packages -type f -iname '*gk*bacnet*mqtt*.ipk' -exec cp -v {} dist/ \;

@@ -1,0 +1,4 @@
+[
+  { "/gk_bacnet_mqtt/config/{service_group}/{?sid}": "services/gk_bacnet_mqtt_config" },
+  { "/gk_bacnet_mqtt/status/{service_group}/{?sid}": "services/gk_bacnet_mqtt_status" }
+]

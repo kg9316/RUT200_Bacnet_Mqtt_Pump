@@ -2,6 +2,8 @@ include $(TOPDIR)/rules.mk
 
 APP_TITLE:=VuCI UI Support for GK BACnet MQTT
 APP_NAME:=$(notdir ${CURDIR})
+APP_APP_NAME:=gk-bacnet-mqtt
+APP_DEPENDS:=+gk-bacnet-mqtt +vuci-app-gk-bacnet-mqtt-api
 CLOSED_GPL_INSTALL:=y
 
 ifneq (,$(filter m,$(CONFIG_PACKAGE_$(APP_NAME)))$(DUMP))

@@ -1,12 +1,17 @@
 local ConfigService = require("api/ConfigService")
 
+-- Keep the service definition aligned with Teltonika's ConfigService example.
+-- The primary section identifies the UCI configuration and section type;
+-- a named section does not require the general_section service flag.
 local Service = ConfigService:new({
 	delete = false,
 	create = false,
-	general_section = "main",
 })
 
-local Main = Service:section("gk_bacnet_mqtt", "gateway")
+local Main = Service:section(
+	"gk_bacnet_mqtt", -- UCI config name
+	"gateway"         -- UCI section type
+)
 Main:make_primary()
 
 local enabled = Main:option("enabled")

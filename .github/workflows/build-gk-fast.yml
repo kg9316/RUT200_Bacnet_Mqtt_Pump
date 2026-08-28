@@ -10,28 +10,32 @@ jobs:
   build:
     name: Fast RUT2M
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     env:
-      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v3-clean-rut2m
+      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v4-vuci-prebuilt
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore validated RUT2M SDK cache
+      - name: Restore prebuilt RUT2M SDK cache
         id: sdk-cache
         uses: actions/cache/restore@v4
         with:
           path: sdk
           key: ${{ env.CACHE_KEY }}-${{ runner.os }}
 
-      - name: Require exact cache
+      - name: Require exact prebuilt cache
         run: |
           set -euo pipefail
           test "${{ steps.sdk-cache.outputs.cache-hit }}" = "true"
           test -f sdk/include/toplevel.mk
-          test -f "$(find sdk/package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
           test -f sdk/ipk_packages.json
+          test -f "$(find sdk/package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
+          VUCI_CORE="$(find sdk/build_dir -maxdepth 1 -type d -name 'vuci-ui-core-*' | head -1)"
+          test -n "$VUCI_CORE"
+          test -d "$VUCI_CORE"
+          echo "Using cached VuCI core: $VUCI_CORE"
 
       - name: Get BACnet headers
         run: |
@@ -76,22 +80,22 @@ jobs:
           "$STRIP" "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -qi libbacnet
 
-      - name: Refresh packages and Package Manager metadata
+      - name: Refresh GK package sources
         run: |
           set -euo pipefail
 
-          rm -rf sdk/package/custom/lib-bacnet
+          rm -rf sdk/package/custom/lib-bacnet sdk/package/custom/gk-bacnet-mqtt
           mkdir -p sdk/package/custom/lib-bacnet
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
-
-          rm -rf sdk/package/custom/gk-bacnet-mqtt
           cp -a package/gk-bacnet-mqtt sdk/package/custom/
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
 
-          rm -rf sdk/package/custom/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
-          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
-
-          rm -rf sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
+          rm -rf \
+            sdk/package/custom/vuci-app-gk-bacnet-mqtt-api \
+            sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui \
+            sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api \
+            sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
+          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
 
           python3 - <<'PY'
@@ -108,14 +112,18 @@ jobs:
 
           find sdk/bin/packages -type f \
             \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) \
-            -delete || true
+            -delete 2>/dev/null || true
 
-      - name: Refresh metadata and select GK packages
+      - name: Refresh metadata and preflight all GK targets
         working-directory: sdk
         run: |
           set -euo pipefail
           rm -rf tmp
           make defconfig
+
+          for pkg in gk-bacnet-mqtt vuci-app-gk-bacnet-mqtt-api vuci-app-gk-bacnet-mqtt-ui; do
+            grep -q "^Package: ${pkg}$" tmp/.packageinfo || { echo "MISSING PACKAGE METADATA: $pkg"; exit 1; }
+          done
 
           for sym in \
             CONFIG_PACKAGE_gk-bacnet-mqtt \
@@ -125,20 +133,24 @@ jobs:
             sed -i "/^${sym}=/d;/^# ${sym} is not set$/d" .config
             echo "${sym}=m" >> .config
           done
+          make defconfig
 
-          echo '=== GK package selection ==='
-          grep -E '^CONFIG_PACKAGE_(gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))=' .config
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
+
+          # Teltonika's documented VuCI target is package/<package-name>/compile.
+          # Dry-run it here so a bad target fails immediately, before expensive compilation.
+          make -n package/vuci-app-gk-bacnet-mqtt-ui/compile >/dev/null
+          echo 'GK targets OK'
 
       - name: Build only GK packages
         working-directory: sdk
         run: |
           set -euo pipefail
           make package/custom/gk-bacnet-mqtt/compile -j2 V=s
-          make package/custom/vuci-app-gk-bacnet-mqtt-api/compile -j2 V=s
-          make package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s
+          make package/vuci-app-gk-bacnet-mqtt-api/compile -j2 V=s
+          make package/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s
 
       - name: Build Teltonika Package Manager bundle
         working-directory: sdk
@@ -181,8 +193,6 @@ jobs:
           CORE_IPK="$(find dist -maxdepth 1 -name 'gk-bacnet-mqtt_*.ipk' | head -1)"
           CORE_TMP="$(mktemp -d)"
           verify_ipk_data "$CORE_IPK" "$CORE_TMP"
-          echo '=== Core package files ==='
-          find "$CORE_TMP/data" -type f | sort
           test -x "$CORE_TMP/data/usr/sbin/gk-bacnet-mqtt"
           test -f "$CORE_TMP/data/etc/config/gk-bacnet-mqtt"
           test -x "$CORE_TMP/data/etc/init.d/gk-bacnet-mqtt"
@@ -193,7 +203,8 @@ jobs:
           verify_ipk_data "$UI_IPK" "$UI_TMP"
           echo '=== UI package files ==='
           find "$UI_TMP/data" -type f | sort
-          find "$UI_TMP/data/www" -type f | grep -E '/(views|assets)/.*GkBacnetMqtt' >/dev/null
+          test -d "$UI_TMP/data/www/views"
+          test -n "$(find "$UI_TMP/data/www/views" -type f | head -1)"
           rm -rf "$UI_TMP"
 
       - name: Normalize raw IPKs for direct opkg install

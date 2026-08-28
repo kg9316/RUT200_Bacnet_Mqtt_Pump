@@ -102,12 +102,16 @@ jobs:
       - name: Refresh package contents
         run: |
           set -euo pipefail
+          LIBBACNET="$(find sdk/package/teltonika/libs/lib-bacnet -type f -path '*/usr/lib/libbacnet.so' | head -1)"
+          test -f "$LIBBACNET"
+
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           rm -rf sdk/package/custom/gk-bacnet-mqtt/files
           mkdir -p sdk/package/custom/gk-bacnet-mqtt/files
           cp -a package/gk-bacnet-mqtt/files/. sdk/package/custom/gk-bacnet-mqtt/files/
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
-          cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
+          cp "$LIBBACNET" sdk/package/custom/gk-bacnet-mqtt/files/libbacnet.so
+
           rm -rf sdk/package/custom/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/custom/

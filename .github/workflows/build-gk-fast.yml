@@ -1,4 +1,4 @@
-name: Fast Build GK BACnet MQTT IPKs - RUT2M
+name: 3 - Fast Build GK BACnet MQTT IPKs - RUT2M
 
 on:
   workflow_dispatch:
@@ -13,19 +13,19 @@ jobs:
     timeout-minutes: 20
 
     env:
-      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v5-vuci-prebuilt
+      VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v1
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore prebuilt RUT2M SDK cache
+      - name: Restore exact prepared VuCI SDK cache
         id: sdk-cache
         uses: actions/cache/restore@v4
         with:
           path: sdk
-          key: ${{ env.CACHE_KEY }}-${{ runner.os }}
+          key: ${{ env.VUCI_CACHE_KEY }}-${{ runner.os }}
 
-      - name: Require exact prepared SDK cache
+      - name: Require exact prepared VuCI cache
         run: |
           set -euo pipefail
           test "${{ steps.sdk-cache.outputs.cache-hit }}" = "true"
@@ -50,7 +50,7 @@ jobs:
           CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
           test -x "$CC"
 
-          echo "Using exact cache: ${{ env.CACHE_KEY }}-${{ runner.os }}"
+          echo "Using exact cache: ${{ env.VUCI_CACHE_KEY }}-${{ runner.os }}"
           echo "Using cached VuCI core: $VUCI_CORE"
           echo "Using cached toolchain: $TOOLCHAIN_DIR"
 
@@ -102,8 +102,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Preserve SDK tmp/, staging_dir/, build_dir/ and all cached dependency stamps.
-          # Only our own package files are refreshed.
           test -d sdk/package/custom/gk-bacnet-mqtt
           test -d sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api
           test -d sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
@@ -116,7 +114,6 @@ jobs:
           rsync -a --delete package/vuci-app-gk-bacnet-mqtt-api/ sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api/
           rsync -a --delete package/vuci-app-gk-bacnet-mqtt-ui/ sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/
 
-          # ipk_packages.json was prepared in the v5 cache. Do not regenerate SDK metadata here.
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -127,7 +124,6 @@ jobs:
           assert entry.get('vuci_dep') == 'vuci-app-gk-bacnet-mqtt-api', entry
           PY
 
-          # Remove only stale GK outputs. Never clean packages or dependencies.
           find sdk/bin/packages -type f \
             \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) \
             -delete 2>/dev/null || true
@@ -135,7 +131,6 @@ jobs:
       - name: Verify prepared metadata is still intact
         run: |
           set -euo pipefail
-          # CRITICAL: no rm -rf sdk/tmp, no make defconfig, no feeds refresh, no clean.
           grep -q '^Package: gk-bacnet-mqtt$' sdk/tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' sdk/tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' sdk/tmp/.packageinfo
@@ -148,8 +143,6 @@ jobs:
         working-directory: sdk
         run: |
           set -euo pipefail
-          # These are the only OpenWrt package builds allowed in Fast Build.
-          # Cached toolchain, mosquitto and vuci-ui-core must be reused through their existing stamps.
           make package/gk-bacnet-mqtt/compile -j2 V=s
           make package/vuci-app-gk-bacnet-mqtt-api/compile -j2 V=s
           make package/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s

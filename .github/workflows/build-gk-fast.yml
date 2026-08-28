@@ -45,6 +45,7 @@ jobs:
           VUCI_CORE="$(find sdk/build_dir -type d -name 'vuci-ui-core-*' | head -1)"
           test -n "$VUCI_CORE"
           test -d "$VUCI_CORE"
+          test -f "$VUCI_CORE/.built"
 
           TOOLCHAIN_DIR="$(find sdk/staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
           CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
@@ -128,6 +129,27 @@ jobs:
             \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) \
             -delete 2>/dev/null || true
 
+      - name: Pin cached VuCI core build stamp
+        run: |
+          set -euo pipefail
+          VUCI_CORE="$(find sdk/build_dir -type d -name 'vuci-ui-core-*' | head -1)"
+          test -n "$VUCI_CORE"
+          test -f "$VUCI_CORE/.built"
+
+          # vuci-ui-core tracks VuCI application sources as build inputs. Updating
+          # our GK UI therefore makes its cached .built stamp look stale even
+          # though the core itself has already been built in workflow #2.
+          # Make the cached core stamp newer than the freshly injected GK files.
+          touch "$VUCI_CORE/.built"
+
+          CORE_INSTALL_STAMP="$(find sdk/staging_dir -type f -name '.vuci-ui-core_installed' | head -1 || true)"
+          if [ -n "$CORE_INSTALL_STAMP" ]; then
+            touch "$CORE_INSTALL_STAMP"
+          fi
+
+          rm -f sdk/tmp/.pkg-rebuilt
+          echo "Pinned cached VuCI core: $VUCI_CORE/.built"
+
       - name: Verify prepared metadata is still intact
         run: |
           set -euo pipefail
@@ -148,6 +170,12 @@ jobs:
             package/vuci-app-gk-bacnet-mqtt-api/compile \
             package/vuci-app-gk-bacnet-mqtt-ui/compile \
             -j2 V=s
+
+          if test -f tmp/.pkg-rebuilt && grep -qx 'vuci-ui-core' tmp/.pkg-rebuilt; then
+            echo 'ERROR: Fast Build unexpectedly rebuilt vuci-ui-core.' >&2
+            exit 1
+          fi
+          echo 'Confirmed: cached vuci-ui-core was not rebuilt.'
 
       - name: Build GK-only Teltonika Package Manager bundle
         working-directory: sdk

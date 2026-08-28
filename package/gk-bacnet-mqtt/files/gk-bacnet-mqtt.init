@@ -8,7 +8,7 @@ PROG=/usr/sbin/gk-bacnet-mqtt
 start_service()
 {
         local enabled bacnet_interface mqtt_host mqtt_port topic_root poll_ms discovery_ms max_age_sec
-        config_load gk-bacnet-mqtt
+        config_load gk_bacnet_mqtt
         config_get_bool enabled main enabled 0
         [ "$enabled" -eq 1 ] || return 0
         config_get bacnet_interface main bacnet_interface "br-lan"
@@ -28,5 +28,5 @@ start_service()
 
 service_triggers()
 {
-        procd_add_reload_trigger "gk-bacnet-mqtt"
+        procd_add_reload_trigger "gk_bacnet_mqtt"
 }

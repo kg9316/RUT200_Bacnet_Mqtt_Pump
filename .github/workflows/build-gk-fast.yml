@@ -167,8 +167,6 @@ jobs:
           assert entry.get('name') == 'gk_bacnet_mqtt', entry
           assert entry.get('vuci_dep') == 'vuci-app-gk-bacnet-mqtt-api', entry
 
-          # Teltonika PM metadata distinguishes VuCI dependencies from base IPKs.
-          # Our daemon is a base package and must be explicitly included in the bundle.
           entry['base_dep'] = 'gk-bacnet-mqtt'
 
           Path('ipk_packages.json').write_text(
@@ -179,8 +177,6 @@ jobs:
           echo 'Package Manager input:'
           cat ipk_packages.json
 
-          # make pm signs the prepared IPKs with key-build. The GPL SDK cache does
-          # not contain a private build key, so create the normal local SDK key.
           USIGN="staging_dir/host/bin/usign"
           test -x "$USIGN"
           rm -f key-build key-build.pub
@@ -188,7 +184,6 @@ jobs:
           test -s key-build
           test -s key-build.pub
 
-          # Teltonika PM generation is not safe in parallel.
           make -j1 pm V=s
 
           PM_BUNDLE="$(find bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"
@@ -236,7 +231,7 @@ jobs:
           CORE_TMP="$(mktemp -d)"
           verify_ipk_data "$CORE_IPK" "$CORE_TMP"
           test -x "$CORE_TMP/data/usr/sbin/gk-bacnet-mqtt"
-          test -f "$CORE_TMP/data/etc/config/gk-bacnet-mqtt"
+          test -f "$CORE_TMP/data/etc/config/gk_bacnet_mqtt"
           test -x "$CORE_TMP/data/etc/init.d/gk-bacnet-mqtt"
           rm -rf "$CORE_TMP"
 

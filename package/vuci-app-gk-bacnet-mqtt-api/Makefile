@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=vuci-app-gk-bacnet-mqtt-api
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -26,13 +26,15 @@ define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
 endef
 
-# RutOS Package Manager relocates third-party payload below /usr/local.
-# The API loader, however, loads Lua services from /usr/lib/lua/api/services.
-# Install canonical runtime copies on the live device while keeping the normal
-# package layout intact for direct opkg installs.
+# RutOS Package Manager installs third-party payload below /usr/local and may
+# invoke postinst with IPKG_INSTROOT=/usr/local. Treat that as a live PM install.
+# Only skip true firmware/image staging roots.
 define Package/$(PKG_NAME)/postinst
 #!/bin/sh
-[ -n "$$IPKG_INSTROOT" ] && exit 0
+ROOT="$${IPKG_INSTROOT:-}"
+if [ -n "$$ROOT" ] && [ "$$ROOT" != "/usr/local" ]; then
+	exit 0
+fi
 
 copy_if_present() {
 	src="$$1"
@@ -40,31 +42,35 @@ copy_if_present() {
 	if [ -f "$$src" ]; then
 		mkdir -p "$${dst%/*}"
 		cp -f "$$src" "$$dst"
+		return 0
 	fi
+	return 1
 }
 
-# API Lua services: api-core uses the canonical /usr/lib path.
+# API Lua services. With Package Manager the payload is under /usr/local/usr/...
+# With direct opkg the canonical files already exist under /usr/lib/....
 copy_if_present /usr/local/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua \
-	/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua
+	/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua || true
 copy_if_present /usr/local/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua \
-	/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua
+	/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua || true
 
-# Route/ACL metadata can be relocated differently by Package Manager versions.
-# Mirror it to both standard and RutOS local lookup locations.
+# Route and ACL metadata must be visible to the system VuCI/rpcd loaders.
 for base in /usr/local/usr/share /usr/local/share /usr/share; do
 	if [ -f "$$base/vuci/path.d/gk-bacnet-mqtt.json" ]; then
-		mkdir -p /usr/share/vuci/path.d /usr/local/share/vuci/path.d
-		cp -f "$$base/vuci/path.d/gk-bacnet-mqtt.json" /usr/share/vuci/path.d/gk-bacnet-mqtt.json
-		cp -f "$$base/vuci/path.d/gk-bacnet-mqtt.json" /usr/local/share/vuci/path.d/gk-bacnet-mqtt.json
+		mkdir -p /usr/share/vuci/path.d
+		if [ "$$base/vuci/path.d/gk-bacnet-mqtt.json" != "/usr/share/vuci/path.d/gk-bacnet-mqtt.json" ]; then
+			cp -f "$$base/vuci/path.d/gk-bacnet-mqtt.json" /usr/share/vuci/path.d/gk-bacnet-mqtt.json
+		fi
 		break
 	fi
 done
 
 for base in /usr/local/usr/share /usr/local/share /usr/share; do
 	if [ -f "$$base/rpcd/acl.d/gk-bacnet-mqtt.json" ]; then
-		mkdir -p /usr/share/rpcd/acl.d /usr/local/share/rpcd/acl.d
-		cp -f "$$base/rpcd/acl.d/gk-bacnet-mqtt.json" /usr/share/rpcd/acl.d/gk-bacnet-mqtt.json
-		cp -f "$$base/rpcd/acl.d/gk-bacnet-mqtt.json" /usr/local/share/rpcd/acl.d/gk-bacnet-mqtt.json
+		mkdir -p /usr/share/rpcd/acl.d
+		if [ "$$base/rpcd/acl.d/gk-bacnet-mqtt.json" != "/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json" ]; then
+			cp -f "$$base/rpcd/acl.d/gk-bacnet-mqtt.json" /usr/share/rpcd/acl.d/gk-bacnet-mqtt.json
+		fi
 		break
 	fi
 done

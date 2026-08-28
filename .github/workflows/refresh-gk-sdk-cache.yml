@@ -60,7 +60,7 @@ jobs:
           fi
           test -f "$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
 
-      - name: Inject GK packages in their real SDK locations
+      - name: Inject GK packages in real SDK locations
         run: |
           set -euo pipefail
           rm -rf \
@@ -68,12 +68,13 @@ jobs:
             sdk/package/custom/gk-bacnet-mqtt \
             sdk/package/custom/vuci-app-gk-bacnet-mqtt-api \
             sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui \
+            sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api \
             sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
 
           mkdir -p sdk/package/custom/lib-bacnet
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
           cp -a package/gk-bacnet-mqtt sdk/package/custom/
-          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
+          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
 
           python3 - <<'PY'
@@ -88,7 +89,7 @@ jobs:
           p.write_text(json.dumps(data, indent=2) + '\n')
           PY
 
-      - name: Register GK packages and prove VuCI target exists
+      - name: Register GK packages and prove targets exist
         working-directory: sdk
         run: |
           set -euo pipefail
@@ -96,7 +97,7 @@ jobs:
           make defconfig
 
           for pkg in lib-bacnet gk-bacnet-mqtt vuci-app-gk-bacnet-mqtt-api vuci-app-gk-bacnet-mqtt-ui; do
-            grep -q "^Package: ${pkg}$" tmp/.packageinfo
+            grep -q "^Package: ${pkg}$" tmp/.packageinfo || { echo "MISSING PACKAGE METADATA: $pkg"; exit 1; }
           done
 
           for sym in \
@@ -113,18 +114,18 @@ jobs:
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
 
-          make -n package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/compile >/dev/null
+          make -n package/vuci-app-gk-bacnet-mqtt-api/compile >/dev/null
+          make -n package/vuci-app-gk-bacnet-mqtt-ui/compile >/dev/null
 
-      - name: Prebuild VuCI core once for all fast builds
+      - name: Prebuild VuCI core once for fast builds
         working-directory: sdk
         run: |
           set -euo pipefail
-          make package/feeds/vuci/vuci-ui-core/compile -j2 V=s
+          make package/vuci-ui-core/compile -j2 V=s
           VUCI_CORE="$(find build_dir -maxdepth 1 -type d -name 'vuci-ui-core-*' | head -1)"
           test -n "$VUCI_CORE"
           test -d "$VUCI_CORE"
           echo "Cached VuCI core: $VUCI_CORE"
-          find "$VUCI_CORE" -maxdepth 3 -type d -name node_modules -print | head
 
       - name: Save prebuilt RUT2M SDK cache
         uses: actions/cache/save@v4

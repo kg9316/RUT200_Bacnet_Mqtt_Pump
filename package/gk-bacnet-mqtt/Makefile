@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gk-bacnet-mqtt
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=8
+PKG_RELEASE:=9
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -10,11 +10,12 @@ define Package/gk-bacnet-mqtt
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=GK BACnet to MQTT Gateway
-  DEPENDS:=+libmosquitto-ssl +libatomic +lib-bacnet
+  DEPENDS:=+libmosquitto-ssl +libatomic +lib-bacnet +api-core
 endef
 
 define Package/gk-bacnet-mqtt/description
  Native BACnet/IP to MQTT gateway for Teltonika RUT2M RutOS devices.
+ Includes the gateway daemon, UCI configuration, VuCI API and compiled VuCI UI.
  Uses the Teltonika lib-bacnet runtime package matching RUT2M_R_00.07.24.2.
 endef
 
@@ -28,6 +29,31 @@ define Package/gk-bacnet-mqtt/install
 	$(INSTALL_CONF) ./files/gk-bacnet-mqtt.config $(1)/etc/config/gk_bacnet_mqtt
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/gk-bacnet-mqtt.init $(1)/etc/init.d/gk-bacnet-mqtt
+
+	# Runtime API and VuCI metadata are owned by this package.
+	$(INSTALL_DIR) $(1)/usr/lib/lua/api/services
+	$(CP) ./runtime/api/services/*.lua $(1)/usr/lib/lua/api/services/
+	$(INSTALL_DIR) $(1)/usr/share/vuci/path.d
+	$(CP) ./runtime/vuci/path.d/*.json $(1)/usr/share/vuci/path.d/
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
+	$(CP) ./runtime/rpcd/acl.d/*.json $(1)/usr/share/rpcd/acl.d/
+	$(INSTALL_DIR) $(1)/usr/share/vuci/menu.d
+	$(CP) ./runtime/vuci/menu.d/*.json $(1)/usr/share/vuci/menu.d/
+
+	# Fast-build workflow injects the UI package's compiled /www tree here.
+	if [ -d ./runtime/www ]; then \
+		$(INSTALL_DIR) $(1)/www; \
+		$(CP) ./runtime/www/* $(1)/www/; \
+	fi
+endef
+
+define Package/gk-bacnet-mqtt/postinst
+#!/bin/sh
+ROOT="$${IPKG_INSTROOT:-}"
+if [ -z "$$ROOT" ] || [ "$$ROOT" = "/usr/local" ]; then
+	/etc/init.d/rpcd restart >/dev/null 2>&1 || true
+fi
+exit 0
 endef
 
 $(eval $(call BuildPackage,gk-bacnet-mqtt))

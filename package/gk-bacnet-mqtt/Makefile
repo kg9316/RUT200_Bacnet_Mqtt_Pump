@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gk-bacnet-mqtt
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -25,7 +25,7 @@ define Package/gk-bacnet-mqtt/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/gk-bacnet-mqtt $(1)/usr/sbin/gk-bacnet-mqtt
 	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_CONF) ./files/gk-bacnet-mqtt.config $(1)/etc/config/gk-bacnet-mqtt
+	$(INSTALL_CONF) ./files/gk-bacnet-mqtt.config $(1)/etc/config/gk_bacnet_mqtt
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/gk-bacnet-mqtt.init $(1)/etc/init.d/gk-bacnet-mqtt
 endef

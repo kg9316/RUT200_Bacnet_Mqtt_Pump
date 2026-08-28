@@ -71,14 +71,12 @@ jobs:
           set -euo pipefail
           rm -rf \
             sdk/package/custom/gk-bacnet-mqtt \
-            sdk/package/custom/lib-bacnet \
             sdk/package/custom/vuci-app-gk-bacnet-mqtt-api \
             sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
 
-          mkdir -p sdk/package/custom/gk-bacnet-mqtt/files sdk/package/custom/lib-bacnet
+          mkdir -p sdk/package/custom/gk-bacnet-mqtt/files
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           cp -a package/gk-bacnet-mqtt/files/. sdk/package/custom/gk-bacnet-mqtt/files/
-          cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/custom/
 

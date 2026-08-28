@@ -95,16 +95,17 @@ jobs:
         working-directory: sdk
         run: |
           set -euo pipefail
-          # Do NOT regenerate packageinfo for the whole Teltonika SDK: many
-          # unrelated vendor packages have unavailable host dependencies.
-          # Generate metadata only for the current GK UI Makefile and replace
-          # its cached stanza.
-          make -s -r -f include/scan.mk IS_TTY=1 SCAN_TARGET="packageinfo" SCAN_DIR="package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui" SCAN_NAME="package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui" SCAN_DEPS="" > "$RUNNER_TEMP/gk-ui.scan" || true
-          if ! grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' "$RUNNER_TEMP/gk-ui.scan"; then
-            echo "Could not generate isolated GK UI package metadata"
-            cat "$RUNNER_TEMP/gk-ui.scan"
-            exit 1
-          fi
+          export TOPDIR="$PWD"
+          export TMP_DIR="$PWD/tmp"
+          export STAGING_DIR="$PWD/staging_dir"
+          mkdir -p "$TMP_DIR/info"
+          make -s -r -f "$TOPDIR/include/scan.mk" \
+            TOPDIR="$TOPDIR" TMP_DIR="$TMP_DIR" STAGING_DIR="$STAGING_DIR" \
+            IS_TTY=1 SCAN_TARGET="packageinfo" \
+            SCAN_DIR="$TOPDIR/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui" \
+            SCAN_NAME="package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui" \
+            SCAN_DEPS="" > "$RUNNER_TEMP/gk-ui.scan"
+          grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' "$RUNNER_TEMP/gk-ui.scan"
           awk '
             BEGIN {skip=0}
             /^Package: vuci-app-gk-bacnet-mqtt-ui$/ {skip=1; next}

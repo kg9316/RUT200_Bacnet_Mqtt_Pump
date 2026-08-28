@@ -39,7 +39,7 @@ jobs:
           path: sdk
           key: ${{ env.CACHE_KEY }}-${{ runner.os }}
 
-      - name: Require exact RUT2M cache
+      - name: Require exact RUT2M cache and Teltonika BACnet runtime
         run: |
           set -euo pipefail
           echo "cache-hit=${{ steps.sdk-cache.outputs.cache-hit }}"
@@ -48,47 +48,25 @@ jobs:
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' sdk/.config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' sdk/.config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' sdk/.config
-          echo "=== RUT2M target identity ==="
-          grep -E '^(CONFIG_TARGET_|CONFIG_ARCH|CONFIG_TARGET_ARCH_PACKAGES)' sdk/.config | head -100 || true
+
           TOOLCHAIN_DIR="$(find sdk/staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
           CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
           test -x "$CC"
-          echo "compiler=$CC"
           "$CC" -dumpmachine
 
-      - name: Get BACnet Stack 1.3.8 source
+          LIBBACNET="$(find sdk/package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
+          test -f "$LIBBACNET"
+          echo "Using Teltonika libbacnet=$LIBBACNET"
+
+      - name: Get matching BACnet Stack headers
         run: |
           set -euo pipefail
           curl -fL --retry 4 https://github.com/bacnet-stack/bacnet-stack/archive/refs/tags/bacnet-stack-1.3.8.tar.gz -o "$RUNNER_TEMP/bacnet.tar.gz"
           mkdir -p "$RUNNER_TEMP/bacnet-stack"
           tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
-          test -f "$RUNNER_TEMP/bacnet-stack/apps/Makefile"
+          test -d "$RUNNER_TEMP/bacnet-stack/src"
 
-      - name: Cross compile BACnet Stack for RUT2M
-        run: |
-          set -euo pipefail
-          SDK="$GITHUB_WORKSPACE/sdk"
-          BAC="$RUNNER_TEMP/bacnet-stack"
-          TOOLCHAIN_DIR="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
-          CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
-          AR="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-ar' | head -1)"
-          RANLIB="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-ranlib' | head -1)"
-          test -x "$CC"
-          test -x "$AR"
-          test -x "$RANLIB"
-
-          make -C "$BAC/apps" -j2 lib \
-            BACDL=bip \
-            BACNET_PORT=linux \
-            LEGACY=true \
-            CC="$CC" \
-            AR="$AR" \
-            RANLIB="$RANLIB"
-
-          test -f "$BAC/apps/lib/libbacnet.a"
-          "$AR" t "$BAC/apps/lib/libbacnet.a" | head -20
-
-      - name: Cross compile GK gateway with RUT2M toolchain
+      - name: Cross compile GK gateway with Teltonika lib-bacnet
         run: |
           set -euo pipefail
           SDK="$GITHUB_WORKSPACE/sdk"
@@ -99,7 +77,8 @@ jobs:
           CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
           STRIP="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-strip' | head -1)"
           MOSQDIR="$(find "$SDK/build_dir" -type d -path '*/mosquitto-ssl/mosquitto-2.0.21' | head -1)"
-          LIBBACNET="$BAC/apps/lib/libbacnet.a"
+          LIBBACNET="$(find "$SDK/package/teltonika/libs/lib-bacnet" -type f -name 'libbacnet.so' | head -1)"
+
           test -x "$CC"
           test -x "$STRIP"
           test -d "$SYSROOT"
@@ -126,8 +105,8 @@ jobs:
           readelf -h "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep 'Machine:'
           echo "=== Dynamic dependencies ==="
           readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep NEEDED || true
-          if readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -qi 'libbacnet'; then
-            echo "ERROR: gateway still depends on external libbacnet"
+          if ! readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -qi 'libbacnet'; then
+            echo "ERROR: gateway is not linked to Teltonika libbacnet"
             exit 1
           fi
           echo "RutOS-stripped core binary size: $(stat -c%s "$GITHUB_WORKSPACE/gk-bacnet-mqtt") bytes"
@@ -135,6 +114,11 @@ jobs:
       - name: Refresh package contents
         run: |
           set -euo pipefail
+
+          rm -rf sdk/package/custom/lib-bacnet
+          mkdir -p sdk/package/custom/lib-bacnet
+          cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
+
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           rm -rf sdk/package/custom/gk-bacnet-mqtt/files
           mkdir -p sdk/package/custom/gk-bacnet-mqtt/files
@@ -151,6 +135,7 @@ jobs:
           set -euo pipefail
           rm -rf tmp
           make defconfig
+          grep -q '^Package: lib-bacnet$' tmp/.packageinfo
           grep -q '^Package: gk-bacnet-mqtt$' tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo

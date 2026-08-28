@@ -127,7 +127,11 @@ jobs:
 
           rm -rf sdk/package/custom/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
-          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/custom/
+
+          # VuCI UI packages must live beside Teltonika app.mk so the official
+          # VuCI build machinery compiles src/src/views into /www/views.
+          rm -rf sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
+          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
 
       - name: Verify exact package metadata
         working-directory: sdk
@@ -149,7 +153,7 @@ jobs:
           set -euo pipefail
           make package/custom/gk-bacnet-mqtt/compile -j1 V=s
           make package/custom/vuci-app-gk-bacnet-mqtt-api/compile -j1 V=s
-          make package/custom/vuci-app-gk-bacnet-mqtt-ui/compile -j1 V=s
+          make package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/compile -j1 V=s
 
       - name: Collect RUT2M IPKs
         run: |
@@ -162,6 +166,24 @@ jobs:
           echo "=== Raw RUT2M output ==="
           ls -lh dist
           test "$(find dist -maxdepth 1 -name '*.ipk' | wc -l)" -eq 3
+
+      - name: Verify VuCI view is packaged
+        run: |
+          set -euo pipefail
+          UI_IPK="$(find dist -maxdepth 1 -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
+          test -f "$UI_IPK"
+          tmp="$(mktemp -d)"
+          if gzip -t "$UI_IPK" 2>/dev/null; then
+            tar -xzf "$UI_IPK" -C "$tmp"
+          else
+            (cd "$tmp" && ar x "$(realpath "$UI_IPK")")
+          fi
+          mkdir -p "$tmp/data"
+          tar -xzf "$tmp/data.tar.gz" -C "$tmp/data"
+          echo "=== UI package files ==="
+          find "$tmp/data" -type f | sort
+          find "$tmp/data/www" -type f | grep -E '/(views|assets)/.*GkBacnetMqtt' >/dev/null
+          rm -rf "$tmp"
 
       - name: Normalize IPKs to Teltonika gzip-tar format
         run: |

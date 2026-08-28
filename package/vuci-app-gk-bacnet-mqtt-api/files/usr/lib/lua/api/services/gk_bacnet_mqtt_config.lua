@@ -6,7 +6,7 @@ local Service = ConfigService:new({
 	general_section = "main",
 })
 
-local Main = Service:section("gk-bacnet-mqtt", "gateway")
+local Main = Service:section("gk_bacnet_mqtt", "gateway")
 Main:make_primary()
 
 local enabled = Main:option("enabled")

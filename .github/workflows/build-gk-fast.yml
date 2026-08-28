@@ -91,31 +91,26 @@ jobs:
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/rpcd/acl.d/*.json "$UI/files/usr/share/rpcd/acl.d/"
           find sdk/bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) -delete 2>/dev/null || true
 
-      - name: Refresh only GK package metadata
+      - name: Remove obsolete API dependency from cached metadata
         working-directory: sdk
         run: |
           set -euo pipefail
-          export TOPDIR="$PWD"
-          export TMP_DIR="$PWD/tmp"
-          export STAGING_DIR="$PWD/staging_dir"
-          mkdir -p "$TMP_DIR/info"
-          make -s -r -f "$TOPDIR/include/scan.mk" \
-            TOPDIR="$TOPDIR" TMP_DIR="$TMP_DIR" STAGING_DIR="$STAGING_DIR" \
-            IS_TTY=1 SCAN_TARGET="packageinfo" \
-            SCAN_DIR="$TOPDIR/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui" \
-            SCAN_NAME="package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui" \
-            SCAN_DEPS="" > "$RUNNER_TEMP/gk-ui.scan"
-          grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' "$RUNNER_TEMP/gk-ui.scan"
-          awk '
-            BEGIN {skip=0}
-            /^Package: vuci-app-gk-bacnet-mqtt-ui$/ {skip=1; next}
-            skip && /^Package:/ {skip=0}
-            !skip {print}
-          ' tmp/.packageinfo > "$RUNNER_TEMP/packageinfo.base"
-          cat "$RUNNER_TEMP/packageinfo.base" "$RUNNER_TEMP/gk-ui.scan" > tmp/.packageinfo
-          rm -f tmp/.packagedeps tmp/.pkg-rebuilt
-          grep -A25 '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo | tee "$RUNNER_TEMP/gk-ui-packageinfo.txt"
-          ! grep -A25 '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo | grep -q 'vuci-app-gk-bacnet-mqtt-api'
+          # The prepared cache was created when the UI package still depended
+          # on the separate API IPK. Do not rescan the Teltonika SDK here.
+          # Patch only that obsolete dependency in the already-valid metadata.
+          python3 - <<'PY'
+          from pathlib import Path
+          files = [Path('tmp/.packageinfo'), Path('tmp/.packagedeps')]
+          for p in files:
+              if not p.exists():
+                  continue
+              s = p.read_text()
+              s = s.replace(' +vuci-app-gk-bacnet-mqtt-api', '')
+              s = s.replace('+vuci-app-gk-bacnet-mqtt-api ', '')
+              s = s.replace('vuci-app-gk-bacnet-mqtt-api', '')
+              p.write_text(s)
+          PY
+          ! grep -A30 '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo | grep -q 'vuci-app-gk-bacnet-mqtt-api'
 
       - name: Pin cached VuCI core
         run: |
@@ -140,6 +135,8 @@ jobs:
           mkdir -p "$TMP/data" "$TMP/control"
           tar -xzf "$TMP/data.tar.gz" -C "$TMP/data"
           tar -xzf "$TMP/control.tar.gz" -C "$TMP/control"
+          echo '=== UI IPK CONTROL ==='
+          cat "$TMP/control/control"
           ! grep -q 'vuci-app-gk-bacnet-mqtt-api' "$TMP/control/control"
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"
           test -f "$TMP/data/etc/config/gk_bacnet_mqtt"

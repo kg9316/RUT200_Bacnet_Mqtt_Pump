@@ -71,6 +71,7 @@ jobs:
           set -euo pipefail
           make package/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s
           test -f "$(find bin/packages -type f -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
+          test -f "$(find bin/packages -type f -name 'lib-bacnet_*.ipk' | head -1)"
       - name: Convert built UI IPK to standalone runtime IPK
         working-directory: sdk
         run: |
@@ -118,19 +119,21 @@ jobs:
           test -n "$(find "$TMP/data/www/views" -type f | head -1)"
           rm -rf "$TMP"
           find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-4_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-6_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-7_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-8_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-9_*.ipk' \) -delete
-      - name: Build Package Manager bundle using accepted VuCI root
+      - name: Build Package Manager bundle with BACnet runtime dependency
         working-directory: sdk
         run: |
           set -euo pipefail
           cp ipk_packages.json "$RUNNER_TEMP/ipk_packages.full.json"; trap 'cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json' EXIT
-          printf '%s\n' '{' '  "vuci-app-gk-bacnet-mqtt-ui": {' '    "name": "gk_bacnet_mqtt"' '  }' '}' > ipk_packages.json
+          printf '%s\n' '{' '  "vuci-app-gk-bacnet-mqtt-ui": {' '    "name": "gk_bacnet_mqtt",' '    "base_dep": "lib-bacnet"' '  }' '}' > ipk_packages.json
           rm -f key-build key-build.pub; staging_dir/host/bin/usign -G -p key-build.pub -s key-build
           make -j1 pm V=s
           PM_BUNDLE="$(find bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"; test -f "$PM_BUNDLE"
           LIST="$(tar -tzf "$PM_BUNDLE")"; printf '%s\n' "$LIST"
           test "$(printf '%s\n' "$LIST" | grep -c 'vuci-app-gk-bacnet-mqtt-ui_.*\.ipk$')" -eq 1
           printf '%s\n' "$LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-10_mipsel_24kc.ipk$'
-          ! printf '%s\n' "$LIST" | grep -q 'gk-bacnet-mqtt_.*\.ipk$'; ! printf '%s\n' "$LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-api_.*\.ipk$'
+          test "$(printf '%s\n' "$LIST" | grep -c 'lib-bacnet_.*\.ipk$')" -eq 1
+          ! printf '%s\n' "$LIST" | grep -q 'gk-bacnet-mqtt_.*\.ipk$'
+          ! printf '%s\n' "$LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-api_.*\.ipk$'
           printf '%s\n' "$LIST" | grep -q '^main$'; printf '%s\n' "$LIST" | grep -q '^main.sig$'
           cp "$PM_BUNDLE" "$RUNNER_TEMP/gk_bacnet_mqtt.tar.gz"
       - name: Return only the RutOS Package Manager file

@@ -1,4 +1,4 @@
-name: Full Validate GK BACnet MQTT IPKs
+name: Full Validate GK BACnet MQTT IPKs - RUT2M
 
 on:
   workflow_dispatch:
@@ -8,17 +8,13 @@ permissions:
 
 jobs:
   build:
-    name: ${{ matrix.target }}
+    name: RUT2M
     runs-on: ubuntu-22.04
     timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: RUT2M
-            cache_key: gk-prepared-sdk-RUT2M-00.07.24.2-v2-vuci
-          - target: RUT14X
-            cache_key: gk-prepared-sdk-RUT14X-00.07.24.2-v2-vuci
+
+    env:
+      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v3-clean-rut2m
+      FIRMWARE: RUT2M_R_GPL_00.07.24.2
 
     steps:
       - uses: actions/checkout@v4
@@ -36,59 +32,52 @@ jobs:
             python3-yaml rsync ruby sharutils subversion swig u-boot-tools unzip uuid-dev \
             vim-common wget zip zlib1g-dev gcc-multilib g++-multilib
 
-      - name: Restore refreshed RutOS SDK
+      - name: Restore exact RUT2M SDK cache
         id: sdk-cache
         uses: actions/cache/restore@v4
         with:
           path: sdk
-          key: ${{ matrix.cache_key }}-${{ runner.os }}
+          key: ${{ env.CACHE_KEY }}-${{ runner.os }}
 
-      - name: Require exact refreshed cache hit
+      - name: Require exact RUT2M cache
         run: |
           set -euo pipefail
-          echo "Target=${{ matrix.target }} cache-hit=${{ steps.sdk-cache.outputs.cache-hit }}"
+          echo "cache-hit=${{ steps.sdk-cache.outputs.cache-hit }}"
           test "${{ steps.sdk-cache.outputs.cache-hit }}" = "true"
-          test -d sdk
           test -f sdk/include/toplevel.mk
-          test -d sdk/package/custom/gk-bacnet-mqtt
-          test -d sdk/package/custom/lib-bacnet
-          test -d sdk/package/custom/vuci-app-gk-bacnet-mqtt-api
-          test -d sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
-
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' sdk/.config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' sdk/.config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' sdk/.config
-
-          echo "=== cached GK packages ==="
-          grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' sdk/.config
+          echo "=== RUT2M target identity ==="
+          grep -E '^(CONFIG_TARGET_|CONFIG_ARCH|CONFIG_TARGET_ARCH_PACKAGES)' sdk/.config | head -100 || true
+          TOOLCHAIN_DIR="$(find sdk/staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
+          CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
+          test -x "$CC"
+          echo "compiler=$CC"
+          "$CC" -dumpmachine
 
       - name: Get BACnet Stack 1.3.8 headers
         run: |
-          curl -fL --retry 4 \
-            https://github.com/bacnet-stack/bacnet-stack/archive/refs/tags/bacnet-stack-1.3.8.tar.gz \
-            -o "$RUNNER_TEMP/bacnet.tar.gz"
-          mkdir "$RUNNER_TEMP/bacnet-stack"
-          tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" \
-            -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
+          set -euo pipefail
+          curl -fL --retry 4 https://github.com/bacnet-stack/bacnet-stack/archive/refs/tags/bacnet-stack-1.3.8.tar.gz -o "$RUNNER_TEMP/bacnet.tar.gz"
+          mkdir -p "$RUNNER_TEMP/bacnet-stack"
+          tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
 
-      - name: Cross compile GK gateway
+      - name: Cross compile GK gateway with RUT2M toolchain
         run: |
           set -euo pipefail
           SDK="$GITHUB_WORKSPACE/sdk"
           export STAGING_DIR="$SDK/staging_dir"
           BAC="$RUNNER_TEMP/bacnet-stack"
-
           TOOLCHAIN_DIR="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
           SYSROOT="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'target-*' | head -1)"
           CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
           STRIP="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-strip' | head -1)"
           MOSQDIR="$(find "$SDK/build_dir" -type d -path '*/mosquitto-ssl/mosquitto-2.0.21' | head -1)"
           LIBBACNET="$(find "$SDK/package/teltonika/libs/lib-bacnet" -type f -path '*/usr/lib/libbacnet.so' | head -1)"
-
           test -x "$CC"
           test -x "$STRIP"
           test -d "$SYSROOT"
-          test -n "$MOSQDIR"
           test -f "$MOSQDIR/lib/libmosquitto.so.1"
           test -f "$LIBBACNET"
 
@@ -100,60 +89,43 @@ jobs:
             "$GITHUB_WORKSPACE/src/mqtt_client.c" \
             "$GITHUB_WORKSPACE/src/bacnet_client.c" \
             "$GITHUB_WORKSPACE/src/status.c" \
-            "$LIBBACNET" \
-            "$MOSQDIR/lib/libmosquitto.so.1" \
+            "$LIBBACNET" "$MOSQDIR/lib/libmosquitto.so.1" \
             -L"$SDK/staging_dir/usr/lib" \
-            -Wl,-rpath,/usr/lib \
-            -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
-            -latomic \
-            -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
+            -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
+            -latomic -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
 
           "$STRIP" "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           file "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
+          readelf -h "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep 'Machine:'
           readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep NEEDED
 
-      - name: Refresh GK package contents in cached SDK
+      - name: Refresh package contents
         run: |
           set -euo pipefail
-
-          # Keep the package definitions that were proven and cached by
-          # Refresh GK RutOS SDK Cache. Only refresh repository-owned contents.
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           rm -rf sdk/package/custom/gk-bacnet-mqtt/files
           mkdir -p sdk/package/custom/gk-bacnet-mqtt/files
           cp -a package/gk-bacnet-mqtt/files/. sdk/package/custom/gk-bacnet-mqtt/files/
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
-
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
-
-          rm -rf sdk/package/custom/vuci-app-gk-bacnet-mqtt-api
-          rm -rf sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
+          rm -rf sdk/package/custom/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/custom/
 
-      - name: Verify package metadata
+      - name: Verify exact package metadata
         working-directory: sdk
         run: |
           set -euo pipefail
           rm -rf tmp
           make defconfig
-
-          echo "=== GK package metadata ==="
-          grep -n -E '^Package: (gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))$' \
-            tmp/.packageinfo
-
           grep -q '^Package: gk-bacnet-mqtt$' tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo
-
-          echo "=== selected GK packages ==="
-          grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' .config
-
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
 
-      - name: Build GK IPKs
+      - name: Build RUT2M IPKs
         working-directory: sdk
         run: |
           set -euo pipefail
@@ -161,26 +133,21 @@ jobs:
           make package/custom/vuci-app-gk-bacnet-mqtt-api/compile -j1 V=s
           make package/custom/vuci-app-gk-bacnet-mqtt-ui/compile -j1 V=s
 
-      - name: Collect GK IPKs
+      - name: Collect RUT2M IPKs
         run: |
           set -euo pipefail
           rm -rf dist
           mkdir dist
-
           find sdk/bin/packages -type f \
-            \( -name 'gk-bacnet-mqtt_*.ipk' \
-               -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' \
-               -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' \) \
+            \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' \) \
             -exec cp -v {} dist/ \;
-
-          echo "=== output packages ==="
+          echo "=== RUT2M output ==="
           ls -lh dist
-
           test "$(find dist -maxdepth 1 -name '*.ipk' | wc -l)" -eq 3
 
       - uses: actions/upload-artifact@v4
         with:
-          name: gk-bacnet-mqtt-${{ matrix.target }}-${{ github.sha }}
+          name: gk-bacnet-mqtt-RUT2M-${{ github.sha }}
           path: dist/*.ipk
           if-no-files-found: error
           retention-days: 30

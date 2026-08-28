@@ -28,7 +28,7 @@
       </div>
     </tlt-card>
 
-    <vuci-form v-slot="{ uciData }" config="gk_bacnet_mqtt">
+    <vuci-form v-slot="{ uciData }" config="gk_bacnet_mqtt" editing>
       <vuci-named-section
         v-slot="{ s }"
         :uci-data="uciData"
@@ -38,7 +38,12 @@
         :title="$t('Gateway configuration')"
       >
         <vuci-form-item-switch :uci-section="s" :label="$t('Enabled')" name="enabled" />
-        <vuci-form-item-input :uci-section="s" :label="$t('BACnet interface')" name="bacnet_interface" maxlength="32" />
+        <vuci-form-item-select
+          :uci-section="s"
+          :label="$t('BACnet interface')"
+          name="bacnet_interface"
+          :options="interfaces"
+        />
         <vuci-form-item-input :uci-section="s" :label="$t('MQTT host')" name="mqtt_host" maxlength="128" />
         <vuci-form-item-input :uci-section="s" :label="$t('MQTT port')" name="mqtt_port" rules="port" />
         <vuci-form-item-input :uci-section="s" :label="$t('Topic root')" name="topic_root" maxlength="128" />
@@ -67,12 +72,14 @@ export default {
         devices: 0,
         points: 0,
       },
+      interfaces: [],
       log: '',
       timer: null,
     };
   },
   mounted() {
     this.loadRuntime();
+    this.loadInterfaces();
     this.loadLog();
     this.timer = setInterval(this.loadRuntime, 5000);
   },
@@ -81,11 +88,11 @@ export default {
   },
   methods: {
     payload(response) {
-      return response && response.data && response.data.data
-        ? response.data.data
-        : response && response.data
-        ? response.data
-        : response;
+      let data = response;
+      if (data && data.data !== undefined) data = data.data;
+      if (data && data.http_body !== undefined) data = data.http_body;
+      if (data && data.data !== undefined) data = data.data;
+      return data;
     },
     async loadRuntime() {
       try {
@@ -95,10 +102,19 @@ export default {
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         this.status = Object.assign(
           { running: !!data.running, mqttConnected: false, devices: 0, points: 0 },
-          parsed
+          parsed || {}
         );
       } catch {
         this.status = { running: false, mqttConnected: false, devices: 0, points: 0 };
+      }
+    },
+    async loadInterfaces() {
+      try {
+        const response = await this.$axios.get('/api/gk_bacnet_mqtt/status/interfaces');
+        const data = this.payload(response) || {};
+        this.interfaces = Array.isArray(data.interfaces) ? data.interfaces : [];
+      } catch {
+        this.interfaces = [];
       }
     },
     async loadLog() {

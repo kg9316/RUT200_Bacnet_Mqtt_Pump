@@ -1,4 +1,4 @@
-name: 3 - Fast Build GK BACnet MQTT IPKs - RUT2M
+name: 3 - Fast Build GK BACnet MQTT IPK - RUT2M
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    name: Fast RUT2M
+    name: Fast RUT2M single IPK
     runs-on: ubuntu-22.04
     timeout-minutes: 20
 
@@ -25,7 +25,7 @@ jobs:
           path: sdk
           key: ${{ env.VUCI_CACHE_KEY }}-${{ runner.os }}
 
-      - name: Require exact prepared VuCI cache
+      - name: Require prepared SDK
         run: |
           set -euo pipefail
           test "${{ steps.sdk-cache.outputs.cache-hit }}" = "true"
@@ -33,27 +33,12 @@ jobs:
           test -f sdk/ipk_packages.json
           test -f sdk/tmp/.packageinfo
           test -f sdk/.config
-
-          grep -q '^Package: gk-bacnet-mqtt$' sdk/tmp/.packageinfo
-          grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' sdk/tmp/.packageinfo
-          grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' sdk/tmp/.packageinfo
-          grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' sdk/.config
-          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' sdk/.config
-          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' sdk/.config
-
+          test -d sdk/package/custom/gk-bacnet-mqtt
+          test -d sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
           test -f "$(find sdk/package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
           VUCI_CORE="$(find sdk/build_dir -type d -name 'vuci-ui-core-*' | head -1)"
           test -n "$VUCI_CORE"
-          test -d "$VUCI_CORE"
           test -f "$VUCI_CORE/.built"
-
-          TOOLCHAIN_DIR="$(find sdk/staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
-          CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
-          test -x "$CC"
-
-          echo "Using exact cache: ${{ env.VUCI_CACHE_KEY }}-${{ runner.os }}"
-          echo "Using cached VuCI core: $VUCI_CORE"
-          echo "Using cached toolchain: $TOOLCHAIN_DIR"
 
       - name: Get BACnet headers
         run: |
@@ -62,7 +47,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bacnet-stack"
           tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
 
-      - name: Cross compile gateway only
+      - name: Cross compile gateway
         run: |
           set -euo pipefail
           SDK="$GITHUB_WORKSPACE/sdk"
@@ -74,232 +59,156 @@ jobs:
           STRIP="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-strip' | head -1)"
           MOSQDIR="$(find "$SDK/build_dir" -type d -path '*/mosquitto-ssl/mosquitto-2.0.21' | head -1)"
           LIBBACNET="$(find "$SDK/package/teltonika/libs/lib-bacnet" -type f -name 'libbacnet.so' | head -1)"
-
-          test -x "$CC"
-          test -x "$STRIP"
-          test -d "$SYSROOT"
-          test -f "$MOSQDIR/lib/libmosquitto.so.1"
-          test -f "$LIBBACNET"
-
+          test -x "$CC"; test -x "$STRIP"; test -f "$LIBBACNET"
           "$CC" -Os --sysroot="$SYSROOT" \
             -I"$GITHUB_WORKSPACE/src" -I"$BAC/src" -I"$BAC/ports/linux" -I"$BAC/ports/posix" -I"$MOSQDIR/include" \
-            "$GITHUB_WORKSPACE/src/main.c" \
-            "$GITHUB_WORKSPACE/src/util.c" \
-            "$GITHUB_WORKSPACE/src/device_table.c" \
-            "$GITHUB_WORKSPACE/src/mqtt_client.c" \
-            "$GITHUB_WORKSPACE/src/bacnet_client.c" \
-            "$GITHUB_WORKSPACE/src/status.c" \
+            "$GITHUB_WORKSPACE/src/main.c" "$GITHUB_WORKSPACE/src/util.c" \
+            "$GITHUB_WORKSPACE/src/device_table.c" "$GITHUB_WORKSPACE/src/mqtt_client.c" \
+            "$GITHUB_WORKSPACE/src/bacnet_client.c" "$GITHUB_WORKSPACE/src/status.c" \
             "$LIBBACNET" "$MOSQDIR/lib/libmosquitto.so.1" \
-            -L"$SDK/staging_dir/usr/lib" \
-            -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
-            -pthread -lrt -lm -latomic \
-            -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
-
+            -L"$SDK/staging_dir/usr/lib" -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
+            -pthread -lrt -lm -latomic -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           "$STRIP" "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -qi libbacnet
-          echo "Core binary: $(stat -c%s "$GITHUB_WORKSPACE/gk-bacnet-mqtt") bytes"
 
-      - name: Update only GK package sources
+      - name: Update GK build sources
         run: |
           set -euo pipefail
-
-          test -d sdk/package/custom/gk-bacnet-mqtt
-          test -d sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api
-          test -d sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
-
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           rsync -a --delete package/gk-bacnet-mqtt/files/ sdk/package/custom/gk-bacnet-mqtt/files/
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
 
-          rsync -a --delete package/vuci-app-gk-bacnet-mqtt-api/ sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api/
+          # UI remains a build-only source package. It is never published/installed.
           rsync -a --delete package/vuci-app-gk-bacnet-mqtt-ui/ sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/
 
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          data = json.loads(Path('sdk/ipk_packages.json').read_text())
-          entry = data.get('vuci-app-gk-bacnet-mqtt-ui')
-          assert entry, 'missing vuci-app-gk-bacnet-mqtt-ui in ipk_packages.json'
-          assert entry.get('name') == 'gk_bacnet_mqtt', entry
-          assert entry.get('vuci_dep') == 'vuci-app-gk-bacnet-mqtt-api', entry
-          PY
+          rm -rf sdk/package/custom/gk-bacnet-mqtt/runtime
+          mkdir -p sdk/package/custom/gk-bacnet-mqtt/runtime/api/services
+          mkdir -p sdk/package/custom/gk-bacnet-mqtt/runtime/vuci/path.d
+          mkdir -p sdk/package/custom/gk-bacnet-mqtt/runtime/vuci/menu.d
+          mkdir -p sdk/package/custom/gk-bacnet-mqtt/runtime/rpcd/acl.d
+          cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/lib/lua/api/services/*.lua sdk/package/custom/gk-bacnet-mqtt/runtime/api/services/
+          cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/vuci/path.d/*.json sdk/package/custom/gk-bacnet-mqtt/runtime/vuci/path.d/
+          cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/rpcd/acl.d/*.json sdk/package/custom/gk-bacnet-mqtt/runtime/rpcd/acl.d/
+          cp package/vuci-app-gk-bacnet-mqtt-ui/files/usr/share/vuci/menu.d/*.json sdk/package/custom/gk-bacnet-mqtt/runtime/vuci/menu.d/
 
-          find sdk/bin/packages -type f \
-            \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) \
-            -delete 2>/dev/null || true
+          find sdk/bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) -delete 2>/dev/null || true
 
-      - name: Pin cached VuCI core build stamp
+      - name: Pin cached VuCI core
         run: |
           set -euo pipefail
           VUCI_CORE="$(find sdk/build_dir -type d -name 'vuci-ui-core-*' | head -1)"
-          test -n "$VUCI_CORE"
           test -f "$VUCI_CORE/.built"
-
-          # vuci-ui-core tracks VuCI application sources as build inputs. Updating
-          # our GK UI therefore makes its cached .built stamp look stale even
-          # though the core itself has already been built in workflow #2.
-          # Make the cached core stamp newer than the freshly injected GK files.
           touch "$VUCI_CORE/.built"
-
           CORE_INSTALL_STAMP="$(find sdk/staging_dir -type f -name '.vuci-ui-core_installed' | head -1 || true)"
-          if [ -n "$CORE_INSTALL_STAMP" ]; then
-            touch "$CORE_INSTALL_STAMP"
-          fi
-
+          if [ -n "$CORE_INSTALL_STAMP" ]; then touch "$CORE_INSTALL_STAMP"; fi
           rm -f sdk/tmp/.pkg-rebuilt
-          echo "Pinned cached VuCI core: $VUCI_CORE/.built"
 
-      - name: Verify prepared metadata is still intact
-        run: |
-          set -euo pipefail
-          grep -q '^Package: gk-bacnet-mqtt$' sdk/tmp/.packageinfo
-          grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' sdk/tmp/.packageinfo
-          grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' sdk/tmp/.packageinfo
-          grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' sdk/.config
-          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' sdk/.config
-          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' sdk/.config
-          echo 'Prepared SDK metadata preserved.'
-
-      - name: Build only GK packages
+      - name: Build UI assets only
         working-directory: sdk
         run: |
           set -euo pipefail
-          make \
-            package/gk-bacnet-mqtt/compile \
-            package/vuci-app-gk-bacnet-mqtt-api/compile \
-            package/vuci-app-gk-bacnet-mqtt-ui/compile \
-            -j2 V=s
-
+          make package/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s
           if test -f tmp/.pkg-rebuilt && grep -qx 'vuci-ui-core' tmp/.pkg-rebuilt; then
             echo 'ERROR: Fast Build unexpectedly rebuilt vuci-ui-core.' >&2
             exit 1
           fi
-          echo 'Confirmed: cached vuci-ui-core was not rebuilt.'
 
-      - name: Build GK-only Teltonika Package Manager bundle
+          UI_IPK="$(find bin/packages -type f -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
+          test -f "$UI_IPK"
+          TMP="$(mktemp -d)"
+          if gzip -t "$UI_IPK" 2>/dev/null; then
+            tar -xzf "$UI_IPK" -C "$TMP"
+          else
+            (cd "$TMP" && ar x "$(realpath "$UI_IPK")")
+          fi
+          mkdir -p "$TMP/data"
+          tar -xzf "$TMP/data.tar.gz" -C "$TMP/data"
+          test -d "$TMP/data/www"
+          rm -rf package/custom/gk-bacnet-mqtt/runtime/www
+          cp -a "$TMP/data/www" package/custom/gk-bacnet-mqtt/runtime/www
+          rm -rf "$TMP"
+
+          # Build-only UI IPK must not survive to artifacts/PM input.
+          find bin/packages -type f -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -delete
+
+      - name: Build single GK IPK
         working-directory: sdk
         run: |
           set -euo pipefail
+          make package/gk-bacnet-mqtt/compile -j2 V=s
+          CORE_IPK="$(find bin/packages -type f -name 'gk-bacnet-mqtt_*.ipk' | head -1)"
+          test -f "$CORE_IPK"
+          test -z "$(find bin/packages -type f -name 'vuci-app-gk-bacnet-mqtt-*.ipk' -print -quit)"
 
+      - name: Build single-IPK Package Manager bundle
+        working-directory: sdk
+        run: |
+          set -euo pipefail
           cp ipk_packages.json "$RUNNER_TEMP/ipk_packages.full.json"
           trap 'cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json' EXIT
-
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          src = json.loads(Path('ipk_packages.json').read_text())
-          entry = dict(src.get('vuci-app-gk-bacnet-mqtt-ui') or {})
-          assert entry, 'missing GK UI Package Manager entry'
-          assert entry.get('name') == 'gk_bacnet_mqtt', entry
-          assert entry.get('vuci_dep') == 'vuci-app-gk-bacnet-mqtt-api', entry
-
-          entry['base_dep'] = 'gk-bacnet-mqtt'
-
-          Path('ipk_packages.json').write_text(
-              json.dumps({'vuci-app-gk-bacnet-mqtt-ui': entry}, indent=2) + '\n'
-          )
-          PY
-
-          echo 'Package Manager input:'
-          cat ipk_packages.json
-
+          cat > ipk_packages.json <<'JSON'
+          {
+            "gk-bacnet-mqtt": {
+              "name": "gk_bacnet_mqtt"
+            }
+          }
+          JSON
           USIGN="staging_dir/host/bin/usign"
           test -x "$USIGN"
           rm -f key-build key-build.pub
           "$USIGN" -G -p key-build.pub -s key-build
-          test -s key-build
-          test -s key-build.pub
-
           make -j1 pm V=s
-
           PM_BUNDLE="$(find bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"
           test -f "$PM_BUNDLE"
-          echo "GK-only Package Manager bundle: $PM_BUNDLE"
-          BUNDLE_LIST="$(tar -tzf "$PM_BUNDLE")"
-          printf '%s\n' "$BUNDLE_LIST"
-
-          printf '%s\n' "$BUNDLE_LIST" | grep -q 'gk-bacnet-mqtt_.*\.ipk'
-          printf '%s\n' "$BUNDLE_LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-api_.*\.ipk'
-          printf '%s\n' "$BUNDLE_LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-ui_.*\.ipk'
-
+          LIST="$(tar -tzf "$PM_BUNDLE")"
+          printf '%s\n' "$LIST"
+          test "$(printf '%s\n' "$LIST" | grep -c 'gk-bacnet-mqtt_.*\.ipk')" -eq 1
+          ! printf '%s\n' "$LIST" | grep -q 'vuci-app-gk-bacnet-mqtt'
           cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json
           trap - EXIT
 
-      - name: Collect and verify packages
+      - name: Collect and verify single package
         run: |
           set -euo pipefail
           rm -rf dist
           mkdir dist
+          CORE_IPK="$(find sdk/bin/packages -type f -name 'gk-bacnet-mqtt_*.ipk' | head -1)"
+          PM_BUNDLE="$(find sdk/bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"
+          cp "$CORE_IPK" dist/
+          cp "$PM_BUNDLE" dist/
+          test "$(find dist -maxdepth 1 -name '*.ipk' | wc -l)" -eq 1
 
-          find sdk/bin/packages -type f \
-            \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' \) \
-            -exec cp -v {} dist/ \;
-          find sdk/bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' \
-            -exec cp -v {} dist/ \;
+          TMP="$(mktemp -d)"
+          IPK="$(find dist -maxdepth 1 -name 'gk-bacnet-mqtt_*.ipk' | head -1)"
+          if gzip -t "$IPK" 2>/dev/null; then tar -xzf "$IPK" -C "$TMP"; else (cd "$TMP" && ar x "$(realpath "$IPK")"); fi
+          mkdir -p "$TMP/data"
+          tar -xzf "$TMP/data.tar.gz" -C "$TMP/data"
+          test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"
+          test -f "$TMP/data/etc/config/gk_bacnet_mqtt"
+          test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
+          test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua"
+          test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua"
+          test -f "$TMP/data/usr/share/vuci/path.d/gk-bacnet-mqtt.json"
+          test -f "$TMP/data/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json"
+          test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"
+          test -d "$TMP/data/www/views"
+          test -n "$(find "$TMP/data/www/views" -type f | head -1)"
+          rm -rf "$TMP"
 
-          test "$(find dist -maxdepth 1 -name '*.ipk' | wc -l)" -eq 3
-          test -f dist/gk_bacnet_mqtt.tar.gz
-
-          verify_ipk_data() {
-            ipk="$1"
-            out="$2"
-            mkdir -p "$out"
-            if gzip -t "$ipk" 2>/dev/null; then
-              tar -xzf "$ipk" -C "$out"
-            else
-              (cd "$out" && ar x "$(realpath "$ipk")")
-            fi
-            mkdir -p "$out/data"
-            tar -xzf "$out/data.tar.gz" -C "$out/data"
-          }
-
-          CORE_IPK="$(find dist -maxdepth 1 -name 'gk-bacnet-mqtt_*.ipk' | head -1)"
-          CORE_TMP="$(mktemp -d)"
-          verify_ipk_data "$CORE_IPK" "$CORE_TMP"
-          test -x "$CORE_TMP/data/usr/sbin/gk-bacnet-mqtt"
-          test -f "$CORE_TMP/data/etc/config/gk_bacnet_mqtt"
-          test -x "$CORE_TMP/data/etc/init.d/gk-bacnet-mqtt"
-          rm -rf "$CORE_TMP"
-
-          UI_IPK="$(find dist -maxdepth 1 -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
-          UI_TMP="$(mktemp -d)"
-          verify_ipk_data "$UI_IPK" "$UI_TMP"
-          echo '=== UI package files ==='
-          find "$UI_TMP/data" -type f | sort
-          test -d "$UI_TMP/data/www/views"
-          test -n "$(find "$UI_TMP/data/www/views" -type f | head -1)"
-          rm -rf "$UI_TMP"
-
-      - name: Normalize raw IPKs for direct opkg install
-        run: |
-          set -euo pipefail
-          for ipk in dist/*.ipk; do
-            if gzip -t "$ipk" 2>/dev/null; then
-              continue
-            fi
-            tmp="$(mktemp -d)"
-            abs_ipk="$(realpath "$ipk")"
-            (
-              cd "$tmp"
-              ar x "$abs_ipk"
-              printf '2.0\n' > debian-binary
-              members=(./debian-binary ./data.tar.gz ./control.tar.gz)
-              if test -f control+data.sig; then members+=(./control+data.sig); fi
-              tar -czf "$abs_ipk.new" "${members[@]}"
-            )
-            mv "$abs_ipk.new" "$abs_ipk"
-            rm -rf "$tmp"
-          done
-          file dist/*.ipk dist/gk_bacnet_mqtt.tar.gz
+          # Normalize Teltonika raw IPK for direct opkg installation.
+          if ! gzip -t "$IPK" 2>/dev/null; then
+            TMP="$(mktemp -d)"; ABS="$(realpath "$IPK")"
+            (cd "$TMP" && ar x "$ABS" && printf '2.0\n' > debian-binary && members=(./debian-binary ./data.tar.gz ./control.tar.gz) && if test -f control+data.sig; then members+=(./control+data.sig); fi && tar -czf "$ABS.new" "${members[@]}")
+            mv "$ABS.new" "$ABS"; rm -rf "$TMP"
+          fi
           ls -lh dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: gk-bacnet-mqtt-RUT2M-fast-${{ github.sha }}
+          name: gk-bacnet-mqtt-RUT2M-single-${{ github.sha }}
           path: |
-            dist/*.ipk
+            dist/gk-bacnet-mqtt_*.ipk
             dist/gk_bacnet_mqtt.tar.gz
           if-no-files-found: error
           retention-days: 30

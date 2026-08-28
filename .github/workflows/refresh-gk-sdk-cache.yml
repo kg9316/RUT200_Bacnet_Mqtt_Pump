@@ -15,7 +15,7 @@ jobs:
     env:
       SDK_URL: https://firmware.teltonika-networks.com/7.24.2/RUT2M/RUT2M_R_GPL_00.07.24.2.tar.gz
       SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.2.tar.gz
-      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v4-teltonika-bacnet
+      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v3-clean-rut2m
 
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +52,7 @@ jobs:
           set -euo pipefail
           grep -E '^(CONFIG_TARGET_|CONFIG_ARCH|CONFIG_TARGET_ARCH_PACKAGES)' .config 2>/dev/null | head -80 || true
 
-      - name: Prepare feeds and toolchain
+      - name: Prepare feeds, toolchain and runtime libraries
         working-directory: sdk
         run: |
           set -euo pipefail
@@ -61,7 +61,14 @@ jobs:
           make tools/install -j2
           make toolchain/install -j2
           make package/mosquitto/compile -j2
-          make package/teltonika/libs/lib-bacnet/compile -j2 V=s || true
+
+          LIBBACNET="$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1 || true)"
+          if test -z "$LIBBACNET"; then
+            make package/teltonika/libs/lib-bacnet/compile -j2 V=s
+          fi
+          LIBBACNET="$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
+          test -f "$LIBBACNET"
+          echo "Teltonika libbacnet=$LIBBACNET"
 
       - name: Inject GK packages and lib-bacnet dependency shim
         run: |
@@ -114,7 +121,6 @@ jobs:
           "$CC" -dumpmachine
 
           LIBBACNET="$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
-          test -n "$LIBBACNET"
           test -f "$LIBBACNET"
           echo "Teltonika libbacnet=$LIBBACNET"
 

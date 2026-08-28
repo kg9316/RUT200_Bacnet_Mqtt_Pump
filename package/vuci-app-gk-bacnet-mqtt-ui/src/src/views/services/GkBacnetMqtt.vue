@@ -1,24 +1,40 @@
 <template>
-  <div>
+  <div class="gk-page">
     <tlt-card :title="$t('Runtime status')">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
-        <div><strong>{{ $t('Service') }}</strong><br>{{ status.running ? $t('Running') : $t('Stopped') }}</div>
-        <div><strong>{{ $t('MQTT') }}</strong><br>{{ status.mqttConnected ? $t('Connected') : $t('Disconnected') }}</div>
-        <div><strong>{{ $t('BACnet devices') }}</strong><br>{{ status.devices }}</div>
-        <div><strong>{{ $t('BACnet points') }}</strong><br>{{ status.points }}</div>
+      <div class="status-grid">
+        <div class="status-item">
+          <div class="status-label">{{ $t('Service') }}</div>
+          <div class="status-value" :class="status.running ? 'ok' : 'bad'">
+            {{ status.running ? $t('Running') : $t('Stopped') }}
+          </div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">{{ $t('MQTT') }}</div>
+          <div class="status-value" :class="status.mqttConnected ? 'ok' : 'bad'">
+            {{ status.mqttConnected ? $t('Connected') : $t('Disconnected') }}
+          </div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">{{ $t('BACnet devices') }}</div>
+          <div class="status-number">{{ status.devices }}</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">{{ $t('BACnet points') }}</div>
+          <div class="status-number">{{ status.points }}</div>
+        </div>
       </div>
-      <div style="margin-top:12px">
+      <div class="card-actions">
         <tlt-button @click="loadRuntime">{{ $t('Refresh') }}</tlt-button>
       </div>
     </tlt-card>
 
-    <vuci-form v-slot="{ uciData }" config="gk-bacnet-mqtt">
+    <vuci-form v-slot="{ uciData }" config="gk_bacnet_mqtt">
       <vuci-named-section
         v-slot="{ s }"
         :uci-data="uciData"
         :endpoints="[{ endpoint: 'gk_bacnet_mqtt/config/config' }]"
         name="main"
-        data-key="gk-bacnet-mqtt"
+        data-key="gk_bacnet_mqtt"
         :title="$t('Gateway configuration')"
       >
         <vuci-form-item-switch :uci-section="s" :label="$t('Enabled')" name="enabled" />
@@ -33,8 +49,10 @@
     </vuci-form>
 
     <tlt-card :title="$t('Gateway log')">
-      <pre style="max-height:420px;overflow:auto;white-space:pre-wrap">{{ log || '-' }}</pre>
-      <tlt-button @click="loadLog">{{ $t('Refresh log') }}</tlt-button>
+      <pre class="gateway-log">{{ log || '-' }}</pre>
+      <div class="card-actions">
+        <tlt-button @click="loadLog">{{ $t('Refresh log') }}</tlt-button>
+      </div>
     </tlt-card>
   </div>
 </template>
@@ -49,7 +67,7 @@ export default {
         devices: 0,
         points: 0,
       },
-      log: "",
+      log: '',
       timer: null,
     };
   },
@@ -75,7 +93,10 @@ export default {
         const data = this.payload(response) || {};
         const raw = data.status || '{"running":false}';
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        this.status = Object.assign({ running: !!data.running, mqttConnected: false, devices: 0, points: 0 }, parsed);
+        this.status = Object.assign(
+          { running: !!data.running, mqttConnected: false, devices: 0, points: 0 },
+          parsed
+        );
       } catch {
         this.status = { running: false, mqttConnected: false, devices: 0, points: 0 };
       }
@@ -92,3 +113,75 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.gk-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.status-item {
+  min-height: 72px;
+  padding: 14px 16px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 6px;
+}
+
+.status-label {
+  margin-bottom: 7px;
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+.status-value,
+.status-number {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.status-value.ok {
+  opacity: 1;
+}
+
+.status-value.bad {
+  opacity: 0.72;
+}
+
+.card-actions {
+  margin-top: 12px;
+}
+
+.gateway-log {
+  min-height: 180px;
+  max-height: 420px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .status-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

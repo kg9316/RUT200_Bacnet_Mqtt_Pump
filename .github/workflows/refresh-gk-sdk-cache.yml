@@ -45,7 +45,7 @@ jobs:
           test -x sdk/scripts/feeds
 
       # IMPORTANT: everything below this point is deliberately ordered so that
-      # our own GK package/target mistakes fail BEFORE tools/toolchain/VuCI builds.
+      # our own GK package/metadata mistakes fail BEFORE tools/toolchain/VuCI builds.
       - name: Refresh feeds metadata
         working-directory: sdk
         run: |
@@ -81,7 +81,7 @@ jobs:
           p.write_text(json.dumps(data, indent=2) + '\n')
           PY
 
-      - name: FAIL FAST - register GK packages and prove logical targets
+      - name: FAIL FAST - register and select GK packages
         working-directory: sdk
         run: |
           set -euo pipefail
@@ -94,8 +94,14 @@ jobs:
               echo "MISSING PACKAGE METADATA: $pkg"
               exit 1
             }
-            echo "OK: $pkg"
+            echo "OK metadata: $pkg"
           done
+
+          echo '=== Verify injected package Makefiles ==='
+          test -f package/custom/lib-bacnet/Makefile
+          test -f package/custom/gk-bacnet-mqtt/Makefile
+          test -f package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api/Makefile
+          test -f package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/Makefile
 
           echo '=== Select GK packages ==='
           for sym in \
@@ -112,13 +118,11 @@ jobs:
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
 
-          echo '=== Prove OpenWrt logical compile targets ==='
-          # Teltonika/OpenWrt logical targets are package/<name>/compile.
-          # DO NOT use package/feeds/vuci/<name>/compile here.
-          make -n package/gk-bacnet-mqtt/compile >/dev/null
-          make -n package/vuci-app-gk-bacnet-mqtt-api/compile >/dev/null
-          make -n package/vuci-app-gk-bacnet-mqtt-ui/compile >/dev/null
-          echo 'GK package registration and all logical targets are OK.'
+          # Do NOT use `make -n package/<pkg>/compile` here. In OpenWrt/Teltonika
+          # -n still walks/evaluates the build dependency graph and can fail solely
+          # because host tools/toolchain/staging have not been built yet. Metadata
+          # registration + retained CONFIG symbols are the correct cheap preflight.
+          echo 'GK package metadata and CONFIG selection are OK.'
 
       - name: Build expensive SDK prerequisites
         working-directory: sdk

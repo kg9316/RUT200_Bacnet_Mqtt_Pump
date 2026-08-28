@@ -20,5 +20,3 @@ define Package/$(APP_NAME)/description
 endef
 
 include ../app.mk
-
-# call BuildPackage - OpenWrt buildroot signature

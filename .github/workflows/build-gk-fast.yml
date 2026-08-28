@@ -92,7 +92,7 @@ jobs:
           import sys
           p=sys.argv[1]; lines=open(p).read().splitlines(); out=[]
           for line in lines:
-              if line.startswith('Version:'): line='Version: 1.0.0-7'
+              if line.startswith('Version:'): line='Version: 1.0.0-8'
               elif line.startswith('Depends:'): line='Depends: libc, libmosquitto-ssl, libatomic1, lib-bacnet, api-core, vuci-ui-core'
               elif line.startswith('Description:'): line='Description:  GK BACnet to MQTT gateway. Single RutOS package containing daemon, UCI config, API and VuCI UI.'
               out.append(line)
@@ -101,7 +101,7 @@ jobs:
           rm -f "$TMP/control.tar.gz"
           tar -czf "$TMP/control.tar.gz" -C "$TMP/control" .
           OUTDIR="$(cd "$(dirname "$UI_IPK")" && pwd)"
-          NEW_IPK="$OUTDIR/vuci-app-gk-bacnet-mqtt-ui_1.0.0-7_mipsel_24kc.ipk"
+          NEW_IPK="$OUTDIR/vuci-app-gk-bacnet-mqtt-ui_1.0.0-8_mipsel_24kc.ipk"
           rm -f "$UI_IPK" "$NEW_IPK"
           if [ "$FORMAT" = gzip ]; then
             tar -czf "$NEW_IPK" -C "$TMP" ./debian-binary ./control.tar.gz ./data.tar.gz
@@ -116,7 +116,7 @@ jobs:
           test -f "$TMP/data/usr/share/vuci/path.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"
           test -n "$(find "$TMP/data/www/views" -type f | head -1)"
           rm -rf "$TMP"
-          find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-4_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-6_*.ipk' \) -delete
+          find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-4_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-6_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-7_*.ipk' \) -delete
       - name: Build Package Manager bundle using accepted VuCI root
         working-directory: sdk
         run: |

@@ -1,4 +1,4 @@
-name: Fast Build GK BACnet MQTT IPKs - TEMP DISABLED
+name: Fast Build GK BACnet MQTT IPKs - RUT2M
 
 on:
   workflow_dispatch:
@@ -7,12 +7,160 @@ permissions:
   contents: read
 
 jobs:
-  disabled:
-    name: Use clean RUT2M cache first
+  build:
+    name: Fast RUT2M
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    env:
+      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v3-clean-rut2m
+
     steps:
-      - name: Stop stale v2 build
+      - uses: actions/checkout@v4
+
+      - name: Restore validated RUT2M SDK cache
+        id: sdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: sdk
+          key: ${{ env.CACHE_KEY }}-${{ runner.os }}
+
+      - name: Require exact cache
         run: |
-          echo "Fast Build is temporarily disabled because the previous v2 cache may contain the wrong SDK target."
-          echo "Run 'Prepare Clean RUT2M SDK Cache' first, then run 'Full Validate GK BACnet MQTT IPKs - RUT2M'."
-          exit 1
+          set -euo pipefail
+          test "${{ steps.sdk-cache.outputs.cache-hit }}" = "true"
+          test -f sdk/include/toplevel.mk
+          test -f "$(find sdk/package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
+
+      - name: Get BACnet headers
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/bacnet-stack/bacnet-stack/archive/refs/tags/bacnet-stack-1.3.8.tar.gz -o "$RUNNER_TEMP/bacnet.tar.gz"
+          mkdir -p "$RUNNER_TEMP/bacnet-stack"
+          tar -xzf "$RUNNER_TEMP/bacnet.tar.gz" -C "$RUNNER_TEMP/bacnet-stack" --strip-components=1
+
+      - name: Cross compile gateway
+        run: |
+          set -euo pipefail
+          SDK="$GITHUB_WORKSPACE/sdk"
+          export STAGING_DIR="$SDK/staging_dir"
+          BAC="$RUNNER_TEMP/bacnet-stack"
+          TOOLCHAIN_DIR="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
+          SYSROOT="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'target-*' | head -1)"
+          CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
+          STRIP="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-strip' | head -1)"
+          MOSQDIR="$(find "$SDK/build_dir" -type d -path '*/mosquitto-ssl/mosquitto-2.0.21' | head -1)"
+          LIBBACNET="$(find "$SDK/package/teltonika/libs/lib-bacnet" -type f -name 'libbacnet.so' | head -1)"
+
+          test -x "$CC"
+          test -x "$STRIP"
+          test -d "$SYSROOT"
+          test -f "$MOSQDIR/lib/libmosquitto.so.1"
+          test -f "$LIBBACNET"
+
+          "$CC" -Os --sysroot="$SYSROOT" \
+            -I"$GITHUB_WORKSPACE/src" -I"$BAC/src" -I"$BAC/ports/linux" -I"$BAC/ports/posix" -I"$MOSQDIR/include" \
+            "$GITHUB_WORKSPACE/src/main.c" \
+            "$GITHUB_WORKSPACE/src/util.c" \
+            "$GITHUB_WORKSPACE/src/device_table.c" \
+            "$GITHUB_WORKSPACE/src/mqtt_client.c" \
+            "$GITHUB_WORKSPACE/src/bacnet_client.c" \
+            "$GITHUB_WORKSPACE/src/status.c" \
+            "$LIBBACNET" "$MOSQDIR/lib/libmosquitto.so.1" \
+            -L"$SDK/staging_dir/usr/lib" \
+            -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
+            -pthread -lrt -lm -latomic \
+            -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
+
+          "$STRIP" "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
+          readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -qi libbacnet
+
+      - name: Refresh packages
+        run: |
+          set -euo pipefail
+
+          rm -rf sdk/package/custom/lib-bacnet
+          mkdir -p sdk/package/custom/lib-bacnet
+          cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
+
+          rm -rf sdk/package/custom/gk-bacnet-mqtt
+          cp -a package/gk-bacnet-mqtt sdk/package/custom/
+          cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
+
+          rm -rf sdk/package/custom/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
+          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
+
+          rm -rf sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
+          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
+
+      - name: Refresh metadata
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          rm -rf tmp
+          make defconfig
+          grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
+          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
+          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
+
+      - name: Build only GK packages
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          make package/custom/gk-bacnet-mqtt/compile -j2 V=s
+          make package/custom/vuci-app-gk-bacnet-mqtt-api/compile -j2 V=s
+          make package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s
+
+      - name: Collect and verify IPKs
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir dist
+          find sdk/bin/packages -type f \
+            \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' \) \
+            -exec cp -v {} dist/ \;
+
+          test "$(find dist -maxdepth 1 -name '*.ipk' | wc -l)" -eq 3
+
+          UI_IPK="$(find dist -maxdepth 1 -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
+          tmp="$(mktemp -d)"
+          if gzip -t "$UI_IPK" 2>/dev/null; then
+            tar -xzf "$UI_IPK" -C "$tmp"
+          else
+            (cd "$tmp" && ar x "$(realpath "$UI_IPK")")
+          fi
+          mkdir -p "$tmp/data"
+          tar -xzf "$tmp/data.tar.gz" -C "$tmp/data"
+          find "$tmp/data" -type f | sort
+          find "$tmp/data/www" -type f | grep -E '/(views|assets)/.*GkBacnetMqtt' >/dev/null
+          rm -rf "$tmp"
+
+      - name: Normalize IPKs
+        run: |
+          set -euo pipefail
+          for ipk in dist/*.ipk; do
+            if gzip -t "$ipk" 2>/dev/null; then
+              continue
+            fi
+            tmp="$(mktemp -d)"
+            abs_ipk="$(realpath "$ipk")"
+            (
+              cd "$tmp"
+              ar x "$abs_ipk"
+              printf '2.0\n' > debian-binary
+              members=(./debian-binary ./data.tar.gz ./control.tar.gz)
+              if test -f control+data.sig; then members+=(./control+data.sig); fi
+              tar -czf "$abs_ipk.new" "${members[@]}"
+            )
+            mv "$abs_ipk.new" "$abs_ipk"
+            rm -rf "$tmp"
+          done
+          file dist/*.ipk
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gk-bacnet-mqtt-RUT2M-fast-${{ github.sha }}
+          path: dist/*.ipk
+          if-no-files-found: error
+          retention-days: 30

@@ -6,8 +6,10 @@ Native BACnet/IP → MQTT gateway for Teltonika RutOS devices.
 
 | Target | Devices | RutOS SDK | Status |
 |---|---|---|---|
-| `RUT2M` | RUT200, RUT241, RUT260 | `RUT2M_R_GPL_00.07.24.2.tar.gz` | Build verified |
-| `RUT14X` | RUT140, RUT142, RUT145 | `RUT14X_R_GPL_00.07.24.2.tar.gz` | Build verified |
+| `RUT2M` | RUT200, RUT241, RUT260 | `RUT2M_R_GPL_00.07.24.2.tar.gz` | Current CI target |
+| `RUT14X` | RUT140, RUT142, RUT145 | `RUT14X_R_GPL_00.07.24.2.tar.gz` | Planned/under validation |
+
+RUT140 is a relevant target for this project because it runs RutOS and can host native packages/services in the same general way as RUT200. It requires its own `RUT14X` SDK build and must not be assumed binary-compatible with RUT2M packages.
 
 ## Architecture
 
@@ -33,7 +35,7 @@ The daemon performs BACnet/IP discovery, object enumeration, metadata reads, Pre
 
 ## Runtime packages
 
-The workflow now builds three GK packages per target:
+The build produces three GK packages:
 
 ```text
 gk-bacnet-mqtt
@@ -110,18 +112,72 @@ config gateway 'main'
 
 ## GitHub Actions
 
-Workflow: `.github/workflows/build-gk.yml`.
+The old monolithic full-validation/cache workflow has been removed. RUT2M CI is deliberately split into independent stages so a late VuCI failure cannot force the expensive SDK/toolchain build to run again.
 
-The workflow is manual (`workflow_dispatch`) and builds both RUT2M and RUT14X. A prepared SDK is cached per target/version, so cache hits skip SDK download, feed update, toolchain preparation and Mosquitto compilation.
-
-Required secrets:
+Run the workflows in this order:
 
 ```text
-TELTONIKA_SDK_URL
-RUT14X_SDK_URL
+0 - Validate GK Build Workflows
+        │
+        ▼
+1 - Prepare RUT2M SDK Base Cache
+        │
+        ▼
+2 - Prepare RUT2M VuCI Cache
+        │
+        ▼
+3 - Fast Build GK BACnet MQTT IPKs - RUT2M
 ```
 
-A successful target build collects all three target-specific GK `.ipk` packages into its GitHub Actions artifact.
+### 0 - Validate GK Build Workflows
+
+File: `.github/workflows/validate-gk-workflows.yml`
+
+Performs cheap repository/workflow checks. It also guards Fast Build against operations that would invalidate the prepared SDK, such as rebuilding the toolchain or VuCI core.
+
+### 1 - Prepare RUT2M SDK Base Cache
+
+File: `.github/workflows/prepare-sdk-base.yml`
+
+This is the expensive and rarely-run stage. It prepares the RUT2M SDK, tools, toolchain, Mosquitto and Teltonika BACnet prerequisites, then saves the result before VuCI is built.
+
+Base cache:
+
+```text
+gk-sdk-base-RUT2M-00.07.24.2-v1-<runner-os>
+```
+
+Once this cache exists, a later VuCI failure does not require another tools/toolchain build.
+
+### 2 - Prepare RUT2M VuCI Cache
+
+File: `.github/workflows/prepare-vuci-cache.yml`
+
+Restores the exact base cache, registers/selects the GK packages and prebuilds `vuci-ui-core`. It then saves the SDK state used by Fast Build.
+
+VuCI cache:
+
+```text
+gk-sdk-vuci-RUT2M-00.07.24.2-v1-<runner-os>
+```
+
+If this stage fails, fix/retry this stage only. The expensive base cache remains available.
+
+### 3 - Fast Build
+
+File: `.github/workflows/build-gk-fast.yml`
+
+Fast Build requires an exact VuCI cache hit. It refreshes only GK-owned source/package files and builds only:
+
+```text
+package/gk-bacnet-mqtt/compile
+package/vuci-app-gk-bacnet-mqtt-api/compile
+package/vuci-app-gk-bacnet-mqtt-ui/compile
+```
+
+Fast Build must not run `tools/install`, `toolchain/install`, feed refresh, `make defconfig`, `rm -rf tmp`, package clean operations or `vuci-ui-core/compile`.
+
+A successful Fast Build creates the three `.ipk` packages plus the Teltonika Package Manager bundle `gk_bacnet_mqtt.tar.gz`.
 
 ## Installation
 
@@ -138,7 +194,8 @@ opkg install /tmp/gk-bacnet-mqtt_*.ipk \
 
 ## Still to validate on hardware
 
-- VuCI rendering/API compatibility on the exact RUT200/RUT140 firmware build
+- VuCI rendering/API compatibility on the exact RUT200 firmware build
 - actual availability/resolution of Teltonika `lib-bacnet` through Package Manager
 - BACnet discovery/polling against physical devices
 - MQTT TLS configuration
+- RUT140/RUT14X SDK target, runtime libraries and package compatibility before enabling RUT14X CI

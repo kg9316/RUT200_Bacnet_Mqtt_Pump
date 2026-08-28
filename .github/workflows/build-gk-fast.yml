@@ -73,8 +73,6 @@ jobs:
           CORE=sdk/package/custom/gk-bacnet-mqtt
           UI=sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
 
-          # Keep SDK-side Makefiles byte-compatible with the package graph that
-          # produced the last known-good fast build (run 33208183825).
           cat > "$CORE/Makefile" <<'MAKE'
           include $(TOPDIR)/rules.mk
 
@@ -115,19 +113,6 @@ jobs:
           	$(CP) ./runtime/rpcd/acl.d/*.json $(1)/usr/share/rpcd/acl.d/
           	$(INSTALL_DIR) $(1)/usr/share/vuci/menu.d
           	$(CP) ./runtime/vuci/menu.d/*.json $(1)/usr/share/vuci/menu.d/
-          	if [ -d ./runtime/www ]; then \
-          		$(INSTALL_DIR) $(1)/www; \
-          		$(CP) ./runtime/www/* $(1)/www/; \
-          	fi
-          endef
-
-          define Package/gk-bacnet-mqtt/postinst
-          #!/bin/sh
-          ROOT="$${IPKG_INSTROOT:-}"
-          if [ -z "$$ROOT" ] || [ "$$ROOT" = "/usr/local" ]; then
-          	/etc/init.d/rpcd restart >/dev/null 2>&1 || true
-          fi
-          exit 0
           endef
 
           $(eval $(call BuildPackage,gk-bacnet-mqtt))
@@ -154,17 +139,12 @@ jobs:
           endef
 
           include ../app.mk
-
-          # call BuildPackage - OpenWrt buildroot signature
           MAKE
 
           rsync -a --delete package/gk-bacnet-mqtt/files/ "$CORE/files/"
           cp gk-bacnet-mqtt "$CORE/files/gk-bacnet-mqtt"
-
-          # Sync current UI sources/assets but keep the compatibility Makefile above.
           rsync -a --delete --exclude Makefile package/vuci-app-gk-bacnet-mqtt-ui/ "$UI/"
 
-          # Core dependency must remain buildable because the cached graph traverses it.
           rm -rf "$CORE/runtime"
           mkdir -p "$CORE/runtime/api/services" "$CORE/runtime/vuci/path.d" "$CORE/runtime/vuci/menu.d" "$CORE/runtime/rpcd/acl.d"
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/lib/lua/api/services/*.lua "$CORE/runtime/api/services/"
@@ -172,7 +152,6 @@ jobs:
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/rpcd/acl.d/*.json "$CORE/runtime/rpcd/acl.d/"
           cp package/vuci-app-gk-bacnet-mqtt-ui/files/usr/share/vuci/menu.d/*.json "$CORE/runtime/vuci/menu.d/"
 
-          # The final physical UI IPK receives the complete runtime payload.
           mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d" \
                    "$UI/files/usr/lib/lua/api/services" "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d"
           cp gk-bacnet-mqtt "$UI/files/usr/sbin/gk-bacnet-mqtt"
@@ -231,7 +210,7 @@ jobs:
           open(p, 'w').write('\n'.join(out) + '\n')
           PY
 
-          OUTDIR="$(dirname "$UI_IPK")"
+          OUTDIR="$(cd "$(dirname "$UI_IPK")" && pwd)"
           rm -f "$UI_IPK"
           test -x staging_dir/host/bin/fakeroot
           test -x scripts/ipkg-build
@@ -241,7 +220,7 @@ jobs:
           test -f "$UI_IPK"
 
           TMP="$(mktemp -d)"
-          if gzip -t "$UI_IPK" 2>/dev/null; then tar -xzf "$UI_IPK" -C "$TMP"; else (cd "$TMP" && ar x "$(realpath "$UI_IPK")"); fi
+          if gzip -t "$UI_IPK" 2>/dev/null; then tar -xzf "$UI_IPK" -C "$TMP"; else (cd "$TMP" && ar x "$UI_IPK"); fi
           mkdir -p "$TMP/data" "$TMP/control"
           tar -xzf "$TMP/data.tar.gz" -C "$TMP/data"
           tar -xzf "$TMP/control.tar.gz" -C "$TMP/control"
@@ -290,8 +269,8 @@ jobs:
           test "$(printf '%s\n' "$LIST" | grep -c '\.ipk$')" -eq 1
           printf '%s\n' "$LIST" | grep -qx 'main'
           printf '%s\n' "$LIST" | grep -qx 'main.sig'
-          ! printf '%s\n' "$LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-api'
           ! printf '%s\n' "$LIST" | grep -q '^\./gk-bacnet-mqtt_'
+          ! printf '%s\n' "$LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-api'
           cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json
           trap - EXIT
 
@@ -303,8 +282,8 @@ jobs:
           PM_BUNDLE="$(find sdk/bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"
           cp "$PM_BUNDLE" dist/gk_bacnet_mqtt.tar.gz
           gzip -t dist/gk_bacnet_mqtt.tar.gz
-          test "$(tar -tzf dist/gk_bacnet_mqtt.tar.gz | grep -c '\.ipk$')" -eq 1
           tar -tzf dist/gk_bacnet_mqtt.tar.gz
+          test "$(tar -tzf dist/gk_bacnet_mqtt.tar.gz | grep -c '\.ipk$')" -eq 1
           ls -lh dist/gk_bacnet_mqtt.tar.gz
 
       - uses: actions/upload-artifact@v4

@@ -71,8 +71,6 @@ jobs:
           set -euo pipefail
           UI=sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
 
-          # Keep Teltonika's native VuCI package as the PM root, but put the
-          # complete gateway runtime inside that one physical IPK.
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
           rsync -a --delete package/vuci-app-gk-bacnet-mqtt-ui/ "$UI/"
 
@@ -90,7 +88,6 @@ jobs:
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/vuci/path.d/*.json "$UI/files/usr/share/vuci/path.d/"
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/rpcd/acl.d/*.json "$UI/files/usr/share/rpcd/acl.d/"
 
-          # Remove all stale GK deliverables from the cached SDK before build.
           find sdk/bin/packages -type f \( \
             -name 'gk-bacnet-mqtt_*.ipk' -o \
             -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o \
@@ -106,9 +103,6 @@ jobs:
 
           UI_IPK="$(find bin/packages -type f -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
           test -f "$UI_IPK"
-
-          # Cached dependency metadata may still cause obsolete helper packages
-          # to be emitted. They must never enter the PM bundle.
           find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' \) -delete
 
           TMP="$(mktemp -d)"
@@ -120,7 +114,6 @@ jobs:
           mkdir -p "$TMP/data"
           tar -xzf "$TMP/data.tar.gz" -C "$TMP/data"
 
-          # Prove that the single VuCI IPK itself contains the complete runtime.
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"
           test -f "$TMP/data/etc/config/gk_bacnet_mqtt"
           test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
@@ -137,10 +130,10 @@ jobs:
             tar -xzf "$TMP/control.tar.gz" -C "$TMP/control"
             if test -f "$TMP/control/control"; then
               cat "$TMP/control/control"
-              ! grep -q 'gk-bacnet-mqtt' "$TMP/control/control" || {
+              if grep '^Depends:' "$TMP/control/control" | grep -Eq '(^|[, ])(gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-api)([, (]|$)'; then
                 echo 'ERROR: single VuCI IPK still depends on obsolete GK helper package.' >&2
                 exit 1
-              }
+              fi
             fi
           fi
           rm -rf "$TMP"
@@ -152,10 +145,6 @@ jobs:
           cp ipk_packages.json "$RUNNER_TEMP/ipk_packages.full.json"
           trap 'cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json' EXIT
 
-          # This deliberately preserves the SAME Teltonika PM root semantics as
-          # the previously accepted 3-package bundle: a vuci-app-...-ui root.
-          # Only vuci_dep/base_dep are removed because all runtime content is now
-          # physically inside this one UI IPK.
           cat > ipk_packages.json <<'JSON'
           {
             "vuci-app-gk-bacnet-mqtt-ui": {
@@ -175,10 +164,6 @@ jobs:
           LIST="$(tar -tzf "$PM_BUNDLE")"
           printf '%s\n' "$LIST"
 
-          # Exact accepted Teltonika shape, now with one physical VuCI IPK:
-          #   ./vuci-app-gk-bacnet-mqtt-ui_....ipk
-          #   main
-          #   main.sig
           test "$(printf '%s\n' "$LIST" | grep -c '^\./vuci-app-gk-bacnet-mqtt-ui_.*\.ipk$')" -eq 1
           test "$(printf '%s\n' "$LIST" | grep -c '\.ipk$')" -eq 1
           printf '%s\n' "$LIST" | grep -qx 'main'

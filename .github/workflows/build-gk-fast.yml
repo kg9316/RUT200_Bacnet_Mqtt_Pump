@@ -76,10 +76,19 @@ jobs:
         run: |
           set -euo pipefail
           UI_IPK="$(find bin/packages -type f -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
-          CONTROL="$(find build_dir -type f -path '*/ipkg-mipsel_24kc/vuci-app-gk-bacnet-mqtt-ui/CONTROL/control' | head -1)"
-          test -f "$UI_IPK"; test -f "$CONTROL"
-          PKGROOT="$(dirname "$(dirname "$CONTROL")")"
-          python3 - "$CONTROL" <<'PY'
+          test -f "$UI_IPK"
+          TMP="$(mktemp -d)"
+          if gzip -t "$UI_IPK" 2>/dev/null; then
+            tar -xzf "$UI_IPK" -C "$TMP"
+            FORMAT=gzip
+          else
+            (cd "$TMP" && ar x "$(realpath "$UI_IPK")")
+            FORMAT=ar
+          fi
+          mkdir -p "$TMP/control" "$TMP/data"
+          tar -xzf "$TMP/control.tar.gz" -C "$TMP/control"
+          tar -xzf "$TMP/data.tar.gz" -C "$TMP/data"
+          python3 - "$TMP/control/control" <<'PY'
           import sys
           p=sys.argv[1]; lines=open(p).read().splitlines(); out=[]
           for line in lines:
@@ -89,17 +98,24 @@ jobs:
               out.append(line)
           open(p,'w').write('\n'.join(out)+'\n')
           PY
-          OUTDIR="$(cd "$(dirname "$UI_IPK")" && pwd)"; rm -f "$UI_IPK"
-          staging_dir/host/bin/fakeroot scripts/ipkg-build -m "" "$PKGROOT" "$OUTDIR"
-          UI_IPK="$(find "$OUTDIR" -maxdepth 1 -type f -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-7_*.ipk' | head -1)"; test -f "$UI_IPK"
-          TMP="$(mktemp -d)"; if gzip -t "$UI_IPK" 2>/dev/null; then tar -xzf "$UI_IPK" -C "$TMP"; else (cd "$TMP" && ar x "$UI_IPK"); fi
-          mkdir -p "$TMP/data" "$TMP/control"; tar -xzf "$TMP/data.tar.gz" -C "$TMP/data"; tar -xzf "$TMP/control.tar.gz" -C "$TMP/control"
+          rm -f "$TMP/control.tar.gz"
+          tar -czf "$TMP/control.tar.gz" -C "$TMP/control" .
+          OUTDIR="$(cd "$(dirname "$UI_IPK")" && pwd)"
+          NEW_IPK="$OUTDIR/vuci-app-gk-bacnet-mqtt-ui_1.0.0-7_mipsel_24kc.ipk"
+          rm -f "$UI_IPK" "$NEW_IPK"
+          if [ "$FORMAT" = gzip ]; then
+            tar -czf "$NEW_IPK" -C "$TMP" ./debian-binary ./control.tar.gz ./data.tar.gz
+          else
+            (cd "$TMP" && ar r "$NEW_IPK" debian-binary control.tar.gz data.tar.gz)
+          fi
+          test -f "$NEW_IPK"
           cat "$TMP/control/control"
           grep -q '^Depends: libc, libmosquitto-ssl, libatomic1, lib-bacnet, api-core, vuci-ui-core$' "$TMP/control/control"
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"; test -f "$TMP/data/etc/config/gk_bacnet_mqtt"; test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
           test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua"; test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua"
           test -f "$TMP/data/usr/share/vuci/path.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"
-          test -n "$(find "$TMP/data/www/views" -type f | head -1)"; rm -rf "$TMP"
+          test -n "$(find "$TMP/data/www/views" -type f | head -1)"
+          rm -rf "$TMP"
           find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-4_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_1.0.0-6_*.ipk' \) -delete
       - name: Build Package Manager bundle using accepted VuCI root
         working-directory: sdk

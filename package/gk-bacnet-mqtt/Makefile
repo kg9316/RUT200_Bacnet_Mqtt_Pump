@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gk-bacnet-mqtt
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -10,13 +10,12 @@ define Package/gk-bacnet-mqtt
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=GK BACnet to MQTT Gateway
-  DEPENDS:=+libmosquitto-ssl +libatomic
+  DEPENDS:=+libmosquitto-ssl +libatomic +lib-bacnet
 endef
 
 define Package/gk-bacnet-mqtt/description
  Native BACnet/IP to MQTT gateway for Teltonika RUT2M RutOS devices.
- The gateway binary statically includes its own BACnet Stack runtime and
- does not depend on Teltonika lib-bacnet or the BACnet Router package.
+ Uses the Teltonika lib-bacnet runtime package matching RUT2M_R_00.07.24.2.
 endef
 
 define Build/Compile

@@ -1,4 +1,4 @@
-name: Refresh GK RutOS SDK Cache
+name: Prepare Clean RUT2M SDK Cache
 
 on:
   workflow_dispatch:
@@ -7,113 +7,122 @@ permissions:
   contents: read
 
 jobs:
-  refresh:
-    name: ${{ matrix.target }}
+  prepare:
+    name: RUT2M
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: RUT2M
-            old_cache_key: gk-prepared-sdk-RUT2M-00.07.24.2-v1
-            new_cache_key: gk-prepared-sdk-RUT2M-00.07.24.2-v2-vuci
-          - target: RUT14X
-            old_cache_key: gk-prepared-sdk-RUT14X-00.07.24.2-v1
-            new_cache_key: gk-prepared-sdk-RUT14X-00.07.24.2-v2-vuci
+    timeout-minutes: 180
+
+    env:
+      SDK_URL: https://firmware.teltonika-networks.com/7.24.2/RUT2M/RUT2M_R_GPL_00.07.24.2.tar.gz
+      SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.2.tar.gz
+      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v3-clean-rut2m
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore old prepared SDK cache
-        id: old-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: sdk
-          key: ${{ matrix.old_cache_key }}-${{ runner.os }}
-
-      - name: Verify restored SDK
+      - name: Install SDK prerequisites
         run: |
           set -euo pipefail
-          echo "cache-hit=${{ steps.old-cache.outputs.cache-hit }}"
-          test "${{ steps.old-cache.outputs.cache-hit }}" = "true"
-          test -d sdk
+          sudo apt-get update
+          sudo apt-get install -y \
+            binutils binutils-gold bison build-essential bzip2 ca-certificates curl cmake \
+            default-jdk device-tree-compiler devscripts ecj file flex fuse g++ gawk gcc gcovr \
+            gengetopt gettext git gnupg groff gperf help2man java-wrappers jq libc6-dev \
+            libffi-dev libexpat-dev libncurses5-dev libpcre3-dev libsqlite3-dev libssl-dev \
+            libxml-parser-perl lz4 liblz4-dev libzstd-dev make ocaml ocaml-findlib ocaml-nox \
+            patch pkg-config psmisc python-is-python3 python3.11 python3.11-dev python3-setuptools \
+            python3-yaml rsync ruby sharutils subversion swig u-boot-tools unzip uuid-dev \
+            vim-common wget zip zlib1g-dev gcc-multilib g++-multilib
+
+      - name: Download exact RUT2M GPL SDK
+        run: |
+          set -euo pipefail
+          rm -rf sdk
+          curl -fL --retry 5 --retry-delay 5 "$SDK_URL" -o "$RUNNER_TEMP/$SDK_ARCHIVE"
+          ls -lh "$RUNNER_TEMP/$SDK_ARCHIVE"
+          sha256sum "$RUNNER_TEMP/$SDK_ARCHIVE"
+          mkdir sdk
+          tar -xzf "$RUNNER_TEMP/$SDK_ARCHIVE" -C sdk --strip-components=1
           test -f sdk/include/toplevel.mk
-          test -f sdk/include/package.mk
+          test -x sdk/scripts/feeds
 
-      - name: Inject GK package definitions into SDK
+      - name: Print RUT2M SDK identity
+        working-directory: sdk
         run: |
           set -euo pipefail
+          echo "=== SDK root ==="
+          pwd
+          echo "=== target hints before defconfig ==="
+          grep -E '^(CONFIG_TARGET_|CONFIG_ARCH|CONFIG_TARGET_ARCH_PACKAGES)' .config 2>/dev/null | head -80 || true
+          find target/linux -maxdepth 2 -type f -name 'target.mk' -print | head -30 || true
 
+      - name: Prepare feeds and toolchain
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          ./scripts/feeds update -a
+          make defconfig
+          make tools/install -j2
+          make toolchain/install -j2
+          make package/mosquitto/compile -j2
+
+      - name: Inject GK package definitions
+        run: |
+          set -euo pipefail
           rm -rf \
             sdk/package/custom/gk-bacnet-mqtt \
             sdk/package/custom/lib-bacnet \
             sdk/package/custom/vuci-app-gk-bacnet-mqtt-api \
             sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
 
-          mkdir -p \
-            sdk/package/custom/gk-bacnet-mqtt/files \
-            sdk/package/custom/lib-bacnet
-
+          mkdir -p sdk/package/custom/gk-bacnet-mqtt/files sdk/package/custom/lib-bacnet
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           cp -a package/gk-bacnet-mqtt/files/. sdk/package/custom/gk-bacnet-mqtt/files/
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
-
-          # API/UI are now standalone OpenWrt packages and do not depend on
-          # Teltonika's api.mk/app.mk registration helpers.
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/custom/
 
-          echo "=== injected GK package Makefiles ==="
-          find sdk/package/custom -maxdepth 2 -name Makefile -print | sort
-
-          test -f sdk/package/custom/vuci-app-gk-bacnet-mqtt-api/Makefile
-          test -f sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui/Makefile
-
-      - name: Regenerate package metadata
+      - name: Register GK packages and verify RUT2M target
         working-directory: sdk
         run: |
           set -euo pipefail
-
           rm -rf tmp
           make defconfig
-
-          echo "=== GK package metadata ==="
-          grep -n -E '^Package: (gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))$' tmp/.packageinfo || true
 
           grep -q '^Package: gk-bacnet-mqtt$' tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo
 
-      - name: Enable GK packages in cached SDK
-        working-directory: sdk
-        run: |
-          set -euo pipefail
-
           sed -i '/^CONFIG_PACKAGE_gk-bacnet-mqtt=/d' .config
           sed -i '/^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=/d' .config
           sed -i '/^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=/d' .config
-
           printf '%s\n' \
             'CONFIG_PACKAGE_gk-bacnet-mqtt=m' \
             'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' \
             'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' >> .config
-
           make defconfig
 
-          echo "=== selected GK packages ==="
-          grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' .config || true
+          echo "=== FINAL RUT2M TARGET CONFIG ==="
+          grep -E '^(CONFIG_TARGET_|CONFIG_ARCH|CONFIG_TARGET_ARCH_PACKAGES)' .config | head -100 || true
+          echo "=== GK PACKAGES ==="
+          grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' .config
 
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
 
-      - name: Save refreshed SDK cache
+          TOOLCHAIN_DIR="$(find staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
+          CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
+          test -x "$CC"
+          echo "=== COMPILER ==="
+          echo "$CC"
+          "$CC" -dumpmachine
+
+      - name: Save clean RUT2M SDK cache
         uses: actions/cache/save@v4
         with:
           path: sdk
-          key: ${{ matrix.new_cache_key }}-${{ runner.os }}
+          key: ${{ env.CACHE_KEY }}-${{ runner.os }}
 
-      - name: Print new cache key
-        run: |
-          echo "NEW CACHE: ${{ matrix.new_cache_key }}-${{ runner.os }}"
+      - name: Print cache key
+        run: echo "NEW CACHE=${CACHE_KEY}-${{ runner.os }}"

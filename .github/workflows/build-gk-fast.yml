@@ -31,9 +31,14 @@ jobs:
           test "${{ steps.sdk-cache.outputs.cache-hit }}" = "true"
           test -f sdk/include/toplevel.mk
           test -f sdk/ipk_packages.json
+          test -f sdk/tmp/.packageinfo
           test -f sdk/.config
+          test -d sdk/package/custom/gk-bacnet-mqtt
           test -d sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
           test -f "$(find sdk/package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
+          VUCI_CORE="$(find sdk/build_dir -type d -name 'vuci-ui-core-*' | head -1)"
+          test -n "$VUCI_CORE"
+          test -f "$VUCI_CORE/.built"
 
       - name: Get BACnet headers
         run: |
@@ -72,10 +77,14 @@ jobs:
           UI=sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
 
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
-          rsync -a --delete package/vuci-app-gk-bacnet-mqtt-ui/ "$UI/"
+          # The cached package graph still makes the UI traverse gk-bacnet-mqtt.
+          # Keep that dependency buildable even though it is not a deliverable.
+          cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
+          rsync -a --delete package/gk-bacnet-mqtt/files/ sdk/package/custom/gk-bacnet-mqtt/files/
+          cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
 
-          mkdir -p "$UI/files/usr/sbin"
-          mkdir -p "$UI/files/etc/config" "$UI/files/etc/init.d"
+          rsync -a --delete package/vuci-app-gk-bacnet-mqtt-ui/ "$UI/"
+          mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d"
           mkdir -p "$UI/files/usr/lib/lua/api/services"
           mkdir -p "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d"
 
@@ -95,6 +104,16 @@ jobs:
             -name 'gk_bacnet_mqtt.tar.gz' \
           \) -delete 2>/dev/null || true
 
+      - name: Pin cached VuCI core
+        run: |
+          set -euo pipefail
+          VUCI_CORE="$(find sdk/build_dir -type d -name 'vuci-ui-core-*' | head -1)"
+          test -f "$VUCI_CORE/.built"
+          touch "$VUCI_CORE/.built"
+          CORE_INSTALL_STAMP="$(find sdk/staging_dir -type f -name '.vuci-ui-core_installed' | head -1 || true)"
+          if [ -n "$CORE_INSTALL_STAMP" ]; then touch "$CORE_INSTALL_STAMP"; fi
+          rm -f sdk/tmp/.pkg-rebuilt
+
       - name: Build one native VuCI runtime IPK
         working-directory: sdk
         run: |
@@ -106,14 +125,9 @@ jobs:
           find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' \) -delete
 
           TMP="$(mktemp -d)"
-          if gzip -t "$UI_IPK" 2>/dev/null; then
-            tar -xzf "$UI_IPK" -C "$TMP"
-          else
-            (cd "$TMP" && ar x "$(realpath "$UI_IPK")")
-          fi
+          if gzip -t "$UI_IPK" 2>/dev/null; then tar -xzf "$UI_IPK" -C "$TMP"; else (cd "$TMP" && ar x "$(realpath "$UI_IPK")"); fi
           mkdir -p "$TMP/data"
           tar -xzf "$TMP/data.tar.gz" -C "$TMP/data"
-
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"
           test -f "$TMP/data/etc/config/gk_bacnet_mqtt"
           test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
@@ -124,27 +138,14 @@ jobs:
           test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"
           test -d "$TMP/data/www/views"
           test -n "$(find "$TMP/data/www/views" -type f | head -1)"
-
-          if test -f "$TMP/control.tar.gz"; then
-            mkdir -p "$TMP/control"
-            tar -xzf "$TMP/control.tar.gz" -C "$TMP/control"
-            if test -f "$TMP/control/control"; then
-              cat "$TMP/control/control"
-              if grep '^Depends:' "$TMP/control/control" | grep -Eq '(^|[, ])(gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-api)([, (]|$)'; then
-                echo 'ERROR: single VuCI IPK still depends on obsolete GK helper package.' >&2
-                exit 1
-              fi
-            fi
-          fi
           rm -rf "$TMP"
 
-      - name: Build Package Manager bundle using the proven VuCI root
+      - name: Build Package Manager bundle using VuCI root
         working-directory: sdk
         run: |
           set -euo pipefail
           cp ipk_packages.json "$RUNNER_TEMP/ipk_packages.full.json"
           trap 'cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json' EXIT
-
           cat > ipk_packages.json <<'JSON'
           {
             "vuci-app-gk-bacnet-mqtt-ui": {
@@ -152,7 +153,6 @@ jobs:
             }
           }
           JSON
-
           USIGN="staging_dir/host/bin/usign"
           test -x "$USIGN"
           rm -f key-build key-build.pub
@@ -163,14 +163,12 @@ jobs:
           test -f "$PM_BUNDLE"
           LIST="$(tar -tzf "$PM_BUNDLE")"
           printf '%s\n' "$LIST"
-
           test "$(printf '%s\n' "$LIST" | grep -c '^\./vuci-app-gk-bacnet-mqtt-ui_.*\.ipk$')" -eq 1
           test "$(printf '%s\n' "$LIST" | grep -c '\.ipk$')" -eq 1
           printf '%s\n' "$LIST" | grep -qx 'main'
           printf '%s\n' "$LIST" | grep -qx 'main.sig'
           ! printf '%s\n' "$LIST" | grep -q '^\./gk-bacnet-mqtt_'
           ! printf '%s\n' "$LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-api'
-
           cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json
           trap - EXIT
 

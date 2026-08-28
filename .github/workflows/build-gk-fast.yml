@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 20
 
     env:
-      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v4-vuci-prebuilt
+      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v5-vuci-prebuilt
 
     steps:
       - uses: actions/checkout@v4
@@ -114,7 +114,7 @@ jobs:
             \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) \
             -delete 2>/dev/null || true
 
-      - name: Refresh metadata and preflight all GK targets
+      - name: Refresh metadata and preflight GK packages
         working-directory: sdk
         run: |
           set -euo pipefail
@@ -138,11 +138,7 @@ jobs:
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
-
-          # Teltonika's documented VuCI target is package/<package-name>/compile.
-          # Dry-run it here so a bad target fails immediately, before expensive compilation.
-          make -n package/vuci-app-gk-bacnet-mqtt-ui/compile >/dev/null
-          echo 'GK targets OK'
+          echo 'GK package metadata/config OK'
 
       - name: Build only GK packages
         working-directory: sdk

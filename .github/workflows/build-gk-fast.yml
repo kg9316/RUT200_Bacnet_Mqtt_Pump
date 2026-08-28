@@ -91,27 +91,6 @@ jobs:
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/rpcd/acl.d/*.json "$UI/files/usr/share/rpcd/acl.d/"
           find sdk/bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) -delete 2>/dev/null || true
 
-      - name: Remove obsolete API dependency from cached metadata
-        working-directory: sdk
-        run: |
-          set -euo pipefail
-          # The prepared cache was created when the UI package still depended
-          # on the separate API IPK. Do not rescan the Teltonika SDK here.
-          # Patch only that obsolete dependency in the already-valid metadata.
-          python3 - <<'PY'
-          from pathlib import Path
-          files = [Path('tmp/.packageinfo'), Path('tmp/.packagedeps')]
-          for p in files:
-              if not p.exists():
-                  continue
-              s = p.read_text()
-              s = s.replace(' +vuci-app-gk-bacnet-mqtt-api', '')
-              s = s.replace('+vuci-app-gk-bacnet-mqtt-api ', '')
-              s = s.replace('vuci-app-gk-bacnet-mqtt-api', '')
-              p.write_text(s)
-          PY
-          ! grep -A30 '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo | grep -q 'vuci-app-gk-bacnet-mqtt-api'
-
       - name: Pin cached VuCI core
         run: |
           set -euo pipefail
@@ -126,18 +105,46 @@ jobs:
         working-directory: sdk
         run: |
           set -euo pipefail
+          # Keep the prepared cache metadata untouched so OpenWrt retains the
+          # valid target graph. The old API dependency is removed from the
+          # finished control archive below, after the package has been built.
           make package/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s
           UI_IPK="$(find bin/packages -type f -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
           test -f "$UI_IPK"
-          find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' \) -delete
+
           TMP="$(mktemp -d)"
-          if gzip -t "$UI_IPK" 2>/dev/null; then tar -xzf "$UI_IPK" -C "$TMP"; else (cd "$TMP" && ar x "$(realpath "$UI_IPK")"); fi
+          if gzip -t "$UI_IPK" 2>/dev/null; then
+            tar -xzf "$UI_IPK" -C "$TMP"
+          else
+            (cd "$TMP" && ar x "$(realpath "$UI_IPK")")
+          fi
           mkdir -p "$TMP/data" "$TMP/control"
           tar -xzf "$TMP/data.tar.gz" -C "$TMP/data"
           tar -xzf "$TMP/control.tar.gz" -C "$TMP/control"
-          echo '=== UI IPK CONTROL ==='
+
+          python3 - "$TMP/control/control" <<'PY'
+          import re, sys
+          p = sys.argv[1]
+          s = open(p).read()
+          out = []
+          for line in s.splitlines():
+              if line.startswith('Depends:'):
+                  deps = [d.strip() for d in line[len('Depends:'):].split(',')]
+                  deps = [d for d in deps if not d.startswith('vuci-app-gk-bacnet-mqtt-api') and not d.startswith('gk-bacnet-mqtt')]
+                  line = 'Depends: ' + ', '.join(deps)
+              out.append(line)
+          open(p, 'w').write('\n'.join(out) + '\n')
+          PY
+
+          rm -f "$TMP/control.tar.gz"
+          tar -czf "$TMP/control.tar.gz" -C "$TMP/control" .
+          rm -f "$UI_IPK"
+          tar -czf "$UI_IPK" -C "$TMP" ./debian-binary ./control.tar.gz ./data.tar.gz
+
+          echo '=== FINAL UI IPK CONTROL ==='
           cat "$TMP/control/control"
           ! grep -q 'vuci-app-gk-bacnet-mqtt-api' "$TMP/control/control"
+          ! grep '^Depends:' "$TMP/control/control" | grep -q 'gk-bacnet-mqtt'
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"
           test -f "$TMP/data/etc/config/gk_bacnet_mqtt"
           test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
@@ -149,6 +156,7 @@ jobs:
           test -d "$TMP/data/www/views"
           test -n "$(find "$TMP/data/www/views" -type f | head -1)"
           rm -rf "$TMP"
+          find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' \) -delete
 
       - name: Build Package Manager bundle using VuCI root
         working-directory: sdk

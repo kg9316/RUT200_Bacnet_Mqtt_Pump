@@ -1,4 +1,4 @@
-name: Prepare Clean RUT2M SDK Cache
+name: Prepare Fast RUT2M SDK Cache
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
     env:
       SDK_URL: https://firmware.teltonika-networks.com/7.24.2/RUT2M/RUT2M_R_GPL_00.07.24.2.tar.gz
       SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.2.tar.gz
-      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v3-clean-rut2m
+      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v4-vuci-prebuilt
 
     steps:
       - uses: actions/checkout@v4
@@ -39,20 +39,12 @@ jobs:
           set -euo pipefail
           rm -rf sdk
           curl -fL --retry 5 --retry-delay 5 "$SDK_URL" -o "$RUNNER_TEMP/$SDK_ARCHIVE"
-          ls -lh "$RUNNER_TEMP/$SDK_ARCHIVE"
-          sha256sum "$RUNNER_TEMP/$SDK_ARCHIVE"
           mkdir sdk
           tar -xzf "$RUNNER_TEMP/$SDK_ARCHIVE" -C sdk --strip-components=1
           test -f sdk/include/toplevel.mk
           test -x sdk/scripts/feeds
 
-      - name: Print RUT2M SDK identity
-        working-directory: sdk
-        run: |
-          set -euo pipefail
-          grep -E '^(CONFIG_TARGET_|CONFIG_ARCH|CONFIG_TARGET_ARCH_PACKAGES)' .config 2>/dev/null | head -80 || true
-
-      - name: Prepare feeds, toolchain and runtime libraries
+      - name: Prepare feeds toolchain MQTT and BACnet runtime
         working-directory: sdk
         run: |
           set -euo pipefail
@@ -66,65 +58,75 @@ jobs:
           if test -z "$LIBBACNET"; then
             make package/teltonika/libs/lib-bacnet/compile -j2 V=s
           fi
-          LIBBACNET="$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
-          test -f "$LIBBACNET"
-          echo "Teltonika libbacnet=$LIBBACNET"
+          test -f "$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
 
-      - name: Inject GK packages and lib-bacnet dependency shim
+      - name: Inject GK packages in their real SDK locations
         run: |
           set -euo pipefail
           rm -rf \
             sdk/package/custom/lib-bacnet \
             sdk/package/custom/gk-bacnet-mqtt \
             sdk/package/custom/vuci-app-gk-bacnet-mqtt-api \
-            sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
+            sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui \
+            sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
 
           mkdir -p sdk/package/custom/lib-bacnet
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
-
-          mkdir -p sdk/package/custom/gk-bacnet-mqtt/files
-          cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
-          cp -a package/gk-bacnet-mqtt/files/. sdk/package/custom/gk-bacnet-mqtt/files/
+          cp -a package/gk-bacnet-mqtt sdk/package/custom/
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/custom/
-          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/custom/
+          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
 
-      - name: Register GK packages and verify RUT2M target
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('sdk/ipk_packages.json')
+          data = json.loads(p.read_text())
+          data['vuci-app-gk-bacnet-mqtt-ui'] = {
+              'name': 'gk_bacnet_mqtt',
+              'vuci_dep': 'vuci-app-gk-bacnet-mqtt-api'
+          }
+          p.write_text(json.dumps(data, indent=2) + '\n')
+          PY
+
+      - name: Register GK packages and prove VuCI target exists
         working-directory: sdk
         run: |
           set -euo pipefail
           rm -rf tmp
           make defconfig
 
-          grep -q '^Package: lib-bacnet$' tmp/.packageinfo
-          grep -q '^Package: gk-bacnet-mqtt$' tmp/.packageinfo
-          grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' tmp/.packageinfo
-          grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo
+          for pkg in lib-bacnet gk-bacnet-mqtt vuci-app-gk-bacnet-mqtt-api vuci-app-gk-bacnet-mqtt-ui; do
+            grep -q "^Package: ${pkg}$" tmp/.packageinfo
+          done
 
-          sed -i '/^CONFIG_PACKAGE_gk-bacnet-mqtt=/d' .config
-          sed -i '/^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=/d' .config
-          sed -i '/^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=/d' .config
-          printf '%s\n' \
-            'CONFIG_PACKAGE_gk-bacnet-mqtt=m' \
-            'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' \
-            'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' >> .config
+          for sym in \
+            CONFIG_PACKAGE_gk-bacnet-mqtt \
+            CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api \
+            CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui
+          do
+            sed -i "/^${sym}=/d;/^# ${sym} is not set$/d" .config
+            echo "${sym}=m" >> .config
+          done
           make defconfig
 
-          grep -E '^(CONFIG_TARGET_|CONFIG_ARCH|CONFIG_TARGET_ARCH_PACKAGES)' .config | head -100 || true
-          grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' .config
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
 
-          TOOLCHAIN_DIR="$(find staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
-          CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
-          test -x "$CC"
-          "$CC" -dumpmachine
+          make -n package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/compile >/dev/null
 
-          LIBBACNET="$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
-          test -f "$LIBBACNET"
-          echo "Teltonika libbacnet=$LIBBACNET"
+      - name: Prebuild VuCI core once for all fast builds
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          make package/feeds/vuci/vuci-ui-core/compile -j2 V=s
+          VUCI_CORE="$(find build_dir -maxdepth 1 -type d -name 'vuci-ui-core-*' | head -1)"
+          test -n "$VUCI_CORE"
+          test -d "$VUCI_CORE"
+          echo "Cached VuCI core: $VUCI_CORE"
+          find "$VUCI_CORE" -maxdepth 3 -type d -name node_modules -print | head
 
-      - name: Save clean RUT2M SDK cache
+      - name: Save prebuilt RUT2M SDK cache
         uses: actions/cache/save@v4
         with:
           path: sdk

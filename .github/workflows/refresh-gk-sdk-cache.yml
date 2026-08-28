@@ -15,7 +15,7 @@ jobs:
     env:
       SDK_URL: https://firmware.teltonika-networks.com/7.24.2/RUT2M/RUT2M_R_GPL_00.07.24.2.tar.gz
       SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.2.tar.gz
-      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v3-clean-rut2m
+      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v4-teltonika-bacnet
 
     steps:
       - uses: actions/checkout@v4
@@ -50,11 +50,7 @@ jobs:
         working-directory: sdk
         run: |
           set -euo pipefail
-          echo "=== SDK root ==="
-          pwd
-          echo "=== target hints before defconfig ==="
           grep -E '^(CONFIG_TARGET_|CONFIG_ARCH|CONFIG_TARGET_ARCH_PACKAGES)' .config 2>/dev/null | head -80 || true
-          find target/linux -maxdepth 2 -type f -name 'target.mk' -print | head -30 || true
 
       - name: Prepare feeds and toolchain
         working-directory: sdk
@@ -65,14 +61,19 @@ jobs:
           make tools/install -j2
           make toolchain/install -j2
           make package/mosquitto/compile -j2
+          make package/teltonika/libs/lib-bacnet/compile -j2 V=s || true
 
-      - name: Inject GK package definitions
+      - name: Inject GK packages and lib-bacnet dependency shim
         run: |
           set -euo pipefail
           rm -rf \
+            sdk/package/custom/lib-bacnet \
             sdk/package/custom/gk-bacnet-mqtt \
             sdk/package/custom/vuci-app-gk-bacnet-mqtt-api \
             sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui
+
+          mkdir -p sdk/package/custom/lib-bacnet
+          cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
 
           mkdir -p sdk/package/custom/gk-bacnet-mqtt/files
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
@@ -87,6 +88,7 @@ jobs:
           rm -rf tmp
           make defconfig
 
+          grep -q '^Package: lib-bacnet$' tmp/.packageinfo
           grep -q '^Package: gk-bacnet-mqtt$' tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-api$' tmp/.packageinfo
           grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo
@@ -100,11 +102,8 @@ jobs:
             'CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' >> .config
           make defconfig
 
-          echo "=== FINAL RUT2M TARGET CONFIG ==="
           grep -E '^(CONFIG_TARGET_|CONFIG_ARCH|CONFIG_TARGET_ARCH_PACKAGES)' .config | head -100 || true
-          echo "=== GK PACKAGES ==="
           grep '^CONFIG_PACKAGE_.*gk-bacnet-mqtt' .config
-
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
@@ -112,9 +111,12 @@ jobs:
           TOOLCHAIN_DIR="$(find staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
           CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
           test -x "$CC"
-          echo "=== COMPILER ==="
-          echo "$CC"
           "$CC" -dumpmachine
+
+          LIBBACNET="$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
+          test -n "$LIBBACNET"
+          test -f "$LIBBACNET"
+          echo "Teltonika libbacnet=$LIBBACNET"
 
       - name: Save clean RUT2M SDK cache
         uses: actions/cache/save@v4

@@ -162,10 +162,14 @@ jobs:
           from pathlib import Path
 
           src = json.loads(Path('ipk_packages.json').read_text())
-          entry = src.get('vuci-app-gk-bacnet-mqtt-ui')
+          entry = dict(src.get('vuci-app-gk-bacnet-mqtt-ui') or {})
           assert entry, 'missing GK UI Package Manager entry'
           assert entry.get('name') == 'gk_bacnet_mqtt', entry
           assert entry.get('vuci_dep') == 'vuci-app-gk-bacnet-mqtt-api', entry
+
+          # Teltonika PM metadata distinguishes VuCI dependencies from base IPKs.
+          # Our daemon is a base package and must be explicitly included in the bundle.
+          entry['base_dep'] = 'gk-bacnet-mqtt'
 
           Path('ipk_packages.json').write_text(
               json.dumps({'vuci-app-gk-bacnet-mqtt-ui': entry}, indent=2) + '\n'
@@ -175,12 +179,27 @@ jobs:
           echo 'Package Manager input:'
           cat ipk_packages.json
 
-          make pm V=s
+          # make pm signs the prepared IPKs with key-build. The GPL SDK cache does
+          # not contain a private build key, so create the normal local SDK key.
+          USIGN="staging_dir/host/bin/usign"
+          test -x "$USIGN"
+          rm -f key-build key-build.pub
+          "$USIGN" -G -p key-build.pub -s key-build
+          test -s key-build
+          test -s key-build.pub
+
+          # Teltonika PM generation is not safe in parallel.
+          make -j1 pm V=s
 
           PM_BUNDLE="$(find bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"
           test -f "$PM_BUNDLE"
           echo "GK-only Package Manager bundle: $PM_BUNDLE"
-          tar -tzf "$PM_BUNDLE"
+          BUNDLE_LIST="$(tar -tzf "$PM_BUNDLE")"
+          printf '%s\n' "$BUNDLE_LIST"
+
+          printf '%s\n' "$BUNDLE_LIST" | grep -q 'gk-bacnet-mqtt_.*\.ipk'
+          printf '%s\n' "$BUNDLE_LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-api_.*\.ipk'
+          printf '%s\n' "$BUNDLE_LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-ui_.*\.ipk'
 
           cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json
           trap - EXIT

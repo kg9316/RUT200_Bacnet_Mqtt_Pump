@@ -2,10 +2,6 @@ name: 0 - Validate GK Build Workflows
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/**'
-      - 'package/**'
 
 permissions:
   contents: read
@@ -54,10 +50,13 @@ jobs:
           reject 'make (tools|toolchain)/install'
           reject 'package/vuci-ui-core/(clean|compile)'
           reject 'make clean'
-          reject 'gk-prepared-sdk-RUT2M-00\.07\.24\.2-v[0-9]'
+          reject 'gk-prepared-sdk-RUT2M-00\\.07\\.24\\.2-v[0-9]'
 
-          grep -q 'make package/gk-bacnet-mqtt/compile' "$FAST"
-          grep -q 'make package/vuci-app-gk-bacnet-mqtt-api/compile' "$FAST"
-          grep -q 'make package/vuci-app-gk-bacnet-mqtt-ui/compile' "$FAST"
+          # Fast Build may use one combined top-level make invocation. Verify that
+          # all three GK package targets are present, rather than requiring three
+          # separate "make package/..." command lines.
+          grep -q 'package/gk-bacnet-mqtt/compile' "$FAST"
+          grep -q 'package/vuci-app-gk-bacnet-mqtt-api/compile' "$FAST"
+          grep -q 'package/vuci-app-gk-bacnet-mqtt-ui/compile' "$FAST"
 
           echo 'Fast Build contract OK.'

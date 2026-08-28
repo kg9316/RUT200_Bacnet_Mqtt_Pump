@@ -15,7 +15,7 @@ jobs:
     env:
       SDK_URL: https://firmware.teltonika-networks.com/7.24.2/RUT2M/RUT2M_R_GPL_00.07.24.2.tar.gz
       SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.2.tar.gz
-      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v4-vuci-prebuilt
+      CACHE_KEY: gk-prepared-sdk-RUT2M-00.07.24.2-v5-vuci-prebuilt
 
     steps:
       - uses: actions/checkout@v4
@@ -44,21 +44,13 @@ jobs:
           test -f sdk/include/toplevel.mk
           test -x sdk/scripts/feeds
 
-      - name: Prepare feeds toolchain MQTT and BACnet runtime
+      # IMPORTANT: everything below this point is deliberately ordered so that
+      # our own GK package/target mistakes fail BEFORE tools/toolchain/VuCI builds.
+      - name: Refresh feeds metadata
         working-directory: sdk
         run: |
           set -euo pipefail
           ./scripts/feeds update -a
-          make defconfig
-          make tools/install -j2
-          make toolchain/install -j2
-          make package/mosquitto/compile -j2
-
-          LIBBACNET="$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1 || true)"
-          if test -z "$LIBBACNET"; then
-            make package/teltonika/libs/lib-bacnet/compile -j2 V=s
-          fi
-          test -f "$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
 
       - name: Inject GK packages in real SDK locations
         run: |
@@ -89,17 +81,23 @@ jobs:
           p.write_text(json.dumps(data, indent=2) + '\n')
           PY
 
-      - name: Register GK packages and prove targets exist
+      - name: FAIL FAST - register GK packages and prove logical targets
         working-directory: sdk
         run: |
           set -euo pipefail
           rm -rf tmp
           make defconfig
 
+          echo '=== Verify GK package metadata ==='
           for pkg in lib-bacnet gk-bacnet-mqtt vuci-app-gk-bacnet-mqtt-api vuci-app-gk-bacnet-mqtt-ui; do
-            grep -q "^Package: ${pkg}$" tmp/.packageinfo || { echo "MISSING PACKAGE METADATA: $pkg"; exit 1; }
+            grep -q "^Package: ${pkg}$" tmp/.packageinfo || {
+              echo "MISSING PACKAGE METADATA: $pkg"
+              exit 1
+            }
+            echo "OK: $pkg"
           done
 
+          echo '=== Select GK packages ==='
           for sym in \
             CONFIG_PACKAGE_gk-bacnet-mqtt \
             CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api \
@@ -114,8 +112,27 @@ jobs:
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
 
+          echo '=== Prove OpenWrt logical compile targets ==='
+          # Teltonika/OpenWrt logical targets are package/<name>/compile.
+          # DO NOT use package/feeds/vuci/<name>/compile here.
+          make -n package/gk-bacnet-mqtt/compile >/dev/null
           make -n package/vuci-app-gk-bacnet-mqtt-api/compile >/dev/null
           make -n package/vuci-app-gk-bacnet-mqtt-ui/compile >/dev/null
+          echo 'GK package registration and all logical targets are OK.'
+
+      - name: Build expensive SDK prerequisites
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          make tools/install -j2
+          make toolchain/install -j2
+          make package/mosquitto/compile -j2
+
+          LIBBACNET="$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1 || true)"
+          if test -z "$LIBBACNET"; then
+            make package/teltonika/libs/lib-bacnet/compile -j2 V=s
+          fi
+          test -f "$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
 
       - name: Prebuild VuCI core once for fast builds
         working-directory: sdk

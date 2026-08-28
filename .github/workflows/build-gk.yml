@@ -114,7 +114,7 @@ jobs:
             "$GITHUB_WORKSPACE/src/mqtt_client.c" \
             "$GITHUB_WORKSPACE/src/bacnet_client.c" \
             "$GITHUB_WORKSPACE/src/status.c" \
-            -Wl,--whole-archive "$LIBBACNET" -Wl,--no-whole-archive \
+            "$LIBBACNET" \
             "$MOSQDIR/lib/libmosquitto.so.1" \
             -L"$SDK/staging_dir/usr/lib" \
             -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
@@ -184,17 +184,17 @@ jobs:
 
           normalize_ipk() {
             ipk="$1"
-            kind="$(file -b "$ipk")"
             echo "=== $ipk ==="
-            echo "input: $kind"
+            echo "input: $(file -b "$ipk")"
 
-            if printf '%s' "$kind" | grep -qi '^gzip compressed data'; then
-              gzip -t "$ipk"
-            elif printf '%s' "$kind" | grep -qi 'ar archive'; then
+            if gzip -t "$ipk" 2>/dev/null; then
+              :
+            elif ar t "$ipk" >/dev/null 2>&1; then
               tmp="$(mktemp -d)"
+              abs_ipk="$(realpath "$ipk")"
               (
                 cd "$tmp"
-                ar x "$OLDPWD/$ipk"
+                ar x "$abs_ipk"
                 test -f debian-binary
                 test -f control.tar.gz
                 test -f data.tar.gz
@@ -203,12 +203,12 @@ jobs:
                 if test -f control+data.sig; then
                   members+=(./control+data.sig)
                 fi
-                tar -czf "$OLDPWD/$ipk.new" "${members[@]}"
+                tar -czf "$abs_ipk.new" "${members[@]}"
               )
-              mv "$ipk.new" "$ipk"
+              mv "$abs_ipk.new" "$abs_ipk"
               rm -rf "$tmp"
             else
-              echo "ERROR: unsupported IPK container: $kind"
+              echo "ERROR: unsupported IPK container: $(file -b "$ipk")"
               exit 1
             fi
 

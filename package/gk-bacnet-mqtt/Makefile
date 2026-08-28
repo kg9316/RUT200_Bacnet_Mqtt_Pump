@@ -30,17 +30,24 @@ define Package/gk-bacnet-mqtt/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/gk-bacnet-mqtt.init $(1)/etc/init.d/gk-bacnet-mqtt
 
-	# Runtime API and VuCI metadata are owned by this package.
-	$(INSTALL_DIR) $(1)/usr/lib/lua/api/services
-	$(CP) ./runtime/api/services/*.lua $(1)/usr/lib/lua/api/services/
-	$(INSTALL_DIR) $(1)/usr/share/vuci/path.d
-	$(CP) ./runtime/vuci/path.d/*.json $(1)/usr/share/vuci/path.d/
-	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
-	$(CP) ./runtime/rpcd/acl.d/*.json $(1)/usr/share/rpcd/acl.d/
-	$(INSTALL_DIR) $(1)/usr/share/vuci/menu.d
-	$(CP) ./runtime/vuci/menu.d/*.json $(1)/usr/share/vuci/menu.d/
-
-	# Fast-build workflow injects the UI package's compiled /www tree here.
+	# The cached VuCI package graph still traverses this legacy core target.
+	# Runtime API/UI data is optional here because the final single runtime package is VuCI.
+	if [ -d ./runtime/api/services ]; then \
+		$(INSTALL_DIR) $(1)/usr/lib/lua/api/services; \
+		$(CP) ./runtime/api/services/*.lua $(1)/usr/lib/lua/api/services/; \
+	fi
+	if [ -d ./runtime/vuci/path.d ]; then \
+		$(INSTALL_DIR) $(1)/usr/share/vuci/path.d; \
+		$(CP) ./runtime/vuci/path.d/*.json $(1)/usr/share/vuci/path.d/; \
+	fi
+	if [ -d ./runtime/rpcd/acl.d ]; then \
+		$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d; \
+		$(CP) ./runtime/rpcd/acl.d/*.json $(1)/usr/share/rpcd/acl.d/; \
+	fi
+	if [ -d ./runtime/vuci/menu.d ]; then \
+		$(INSTALL_DIR) $(1)/usr/share/vuci/menu.d; \
+		$(CP) ./runtime/vuci/menu.d/*.json $(1)/usr/share/vuci/menu.d/; \
+	fi
 	if [ -d ./runtime/www ]; then \
 		$(INSTALL_DIR) $(1)/www; \
 		$(CP) ./runtime/www/* $(1)/www/; \

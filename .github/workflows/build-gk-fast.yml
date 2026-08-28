@@ -126,10 +126,8 @@ jobs:
             echo "${sym}=m" >> .config
           done
 
-          make defconfig
-
           echo '=== GK package selection ==='
-          grep -E '^CONFIG_PACKAGE_(gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))=' .config || true
+          grep -E '^CONFIG_PACKAGE_(gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))=' .config
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config

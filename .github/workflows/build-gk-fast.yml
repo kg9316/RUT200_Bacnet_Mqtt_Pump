@@ -31,6 +31,7 @@ jobs:
           test "${{ steps.sdk-cache.outputs.cache-hit }}" = "true"
           test -f sdk/include/toplevel.mk
           test -f "$(find sdk/package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
+          test -f sdk/ipk_packages.json
 
       - name: Get BACnet headers
         run: |
@@ -75,7 +76,7 @@ jobs:
           "$STRIP" "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -qi libbacnet
 
-      - name: Refresh packages
+      - name: Refresh packages and Package Manager metadata
         run: |
           set -euo pipefail
 
@@ -93,6 +94,22 @@ jobs:
           rm -rf sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
 
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('sdk/ipk_packages.json')
+          data = json.loads(p.read_text())
+          data['vuci-app-gk-bacnet-mqtt-ui'] = {
+              'name': 'gk_bacnet_mqtt',
+              'vuci_dep': 'vuci-app-gk-bacnet-mqtt-api'
+          }
+          p.write_text(json.dumps(data, indent=2) + '\n')
+          PY
+
+          find sdk/bin/packages -type f \
+            \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) \
+            -delete || true
+
       - name: Refresh metadata and select GK packages
         working-directory: sdk
         run: |
@@ -100,9 +117,15 @@ jobs:
           rm -rf tmp
           make defconfig
 
-          ./scripts/config --module PACKAGE_gk-bacnet-mqtt
-          ./scripts/config --module PACKAGE_vuci-app-gk-bacnet-mqtt-api
-          ./scripts/config --module PACKAGE_vuci-app-gk-bacnet-mqtt-ui
+          for sym in \
+            CONFIG_PACKAGE_gk-bacnet-mqtt \
+            CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api \
+            CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui
+          do
+            sed -i "/^${sym}=/d;/^# ${sym} is not set$/d" .config
+            echo "${sym}=m" >> .config
+          done
+
           make defconfig
 
           echo '=== GK package selection ==='
@@ -119,16 +142,30 @@ jobs:
           make package/custom/vuci-app-gk-bacnet-mqtt-api/compile -j2 V=s
           make package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s
 
-      - name: Collect and verify IPKs
+      - name: Build Teltonika Package Manager bundle
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          make pm V=s
+          PM_BUNDLE="$(find bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"
+          test -f "$PM_BUNDLE"
+          echo "Package Manager bundle: $PM_BUNDLE"
+          tar -tzf "$PM_BUNDLE"
+
+      - name: Collect and verify packages
         run: |
           set -euo pipefail
           rm -rf dist
           mkdir dist
+
           find sdk/bin/packages -type f \
             \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' \) \
             -exec cp -v {} dist/ \;
+          find sdk/bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' \
+            -exec cp -v {} dist/ \;
 
           test "$(find dist -maxdepth 1 -name '*.ipk' | wc -l)" -eq 3
+          test -f dist/gk_bacnet_mqtt.tar.gz
 
           verify_ipk_data() {
             ipk="$1"
@@ -161,7 +198,7 @@ jobs:
           find "$UI_TMP/data/www" -type f | grep -E '/(views|assets)/.*GkBacnetMqtt' >/dev/null
           rm -rf "$UI_TMP"
 
-      - name: Normalize IPKs
+      - name: Normalize raw IPKs for direct opkg install
         run: |
           set -euo pipefail
           for ipk in dist/*.ipk; do
@@ -181,12 +218,14 @@ jobs:
             mv "$abs_ipk.new" "$abs_ipk"
             rm -rf "$tmp"
           done
-          file dist/*.ipk
+          file dist/*.ipk dist/gk_bacnet_mqtt.tar.gz
           ls -lh dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: gk-bacnet-mqtt-RUT2M-fast-${{ github.sha }}
-          path: dist/*.ipk
+          path: |
+            dist/*.ipk
+            dist/gk_bacnet_mqtt.tar.gz
           if-no-files-found: error
           retention-days: 30

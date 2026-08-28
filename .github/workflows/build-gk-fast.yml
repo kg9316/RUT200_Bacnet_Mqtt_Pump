@@ -75,19 +75,12 @@ jobs:
         run: |
           set -euo pipefail
           UI=sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
-
           cp package/build-shims/lib-bacnet/Makefile sdk/package/custom/lib-bacnet/Makefile
-          # The cached package graph still makes the UI traverse gk-bacnet-mqtt.
-          # Keep that dependency buildable even though it is not a deliverable.
           cp package/gk-bacnet-mqtt/Makefile sdk/package/custom/gk-bacnet-mqtt/Makefile
           rsync -a --delete package/gk-bacnet-mqtt/files/ sdk/package/custom/gk-bacnet-mqtt/files/
           cp gk-bacnet-mqtt sdk/package/custom/gk-bacnet-mqtt/files/gk-bacnet-mqtt
-
           rsync -a --delete package/vuci-app-gk-bacnet-mqtt-ui/ "$UI/"
-          mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d"
-          mkdir -p "$UI/files/usr/lib/lua/api/services"
-          mkdir -p "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d"
-
+          mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d" "$UI/files/usr/lib/lua/api/services" "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d"
           cp gk-bacnet-mqtt "$UI/files/usr/sbin/gk-bacnet-mqtt"
           chmod 0755 "$UI/files/usr/sbin/gk-bacnet-mqtt"
           cp package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.config "$UI/files/etc/config/gk_bacnet_mqtt"
@@ -96,13 +89,19 @@ jobs:
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/lib/lua/api/services/*.lua "$UI/files/usr/lib/lua/api/services/"
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/vuci/path.d/*.json "$UI/files/usr/share/vuci/path.d/"
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/rpcd/acl.d/*.json "$UI/files/usr/share/rpcd/acl.d/"
+          find sdk/bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) -delete 2>/dev/null || true
 
-          find sdk/bin/packages -type f \( \
-            -name 'gk-bacnet-mqtt_*.ipk' -o \
-            -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o \
-            -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o \
-            -name 'gk_bacnet_mqtt.tar.gz' \
-          \) -delete 2>/dev/null || true
+      - name: Refresh GK package metadata
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          # Cache contains the old 3-package dependency graph. Regenerate package
+          # metadata from the current Makefiles so the single UI IPK does not
+          # retain a dependency on vuci-app-gk-bacnet-mqtt-api.
+          rm -f tmp/.packageinfo tmp/.packagedeps
+          make packageinfo
+          grep -A20 '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo | tee "$RUNNER_TEMP/gk-ui-packageinfo.txt"
+          ! grep -A20 '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo | grep -q 'vuci-app-gk-bacnet-mqtt-api'
 
       - name: Pin cached VuCI core
         run: |
@@ -119,15 +118,15 @@ jobs:
         run: |
           set -euo pipefail
           make package/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s
-
           UI_IPK="$(find bin/packages -type f -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
           test -f "$UI_IPK"
           find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' \) -delete
-
           TMP="$(mktemp -d)"
           if gzip -t "$UI_IPK" 2>/dev/null; then tar -xzf "$UI_IPK" -C "$TMP"; else (cd "$TMP" && ar x "$(realpath "$UI_IPK")"); fi
-          mkdir -p "$TMP/data"
+          mkdir -p "$TMP/data" "$TMP/control"
           tar -xzf "$TMP/data.tar.gz" -C "$TMP/data"
+          tar -xzf "$TMP/control.tar.gz" -C "$TMP/control"
+          ! grep -q 'vuci-app-gk-bacnet-mqtt-api' "$TMP/control/control"
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"
           test -f "$TMP/data/etc/config/gk_bacnet_mqtt"
           test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
@@ -158,7 +157,6 @@ jobs:
           rm -f key-build key-build.pub
           "$USIGN" -G -p key-build.pub -s key-build
           make -j1 pm V=s
-
           PM_BUNDLE="$(find bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"
           test -f "$PM_BUNDLE"
           LIST="$(tar -tzf "$PM_BUNDLE")"

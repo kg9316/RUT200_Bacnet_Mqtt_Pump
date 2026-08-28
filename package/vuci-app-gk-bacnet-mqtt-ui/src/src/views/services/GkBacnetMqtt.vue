@@ -4,11 +4,17 @@
       <div class="status-grid">
         <div class="status-item">
           <div class="status-label">{{ $t('Service') }}</div>
-          <div class="status-value">{{ status.running ? $t('Running') : $t('Stopped') }}</div>
+          <div class="status-value">
+            <span class="status-dot" :class="status.running ? 'ok' : 'bad'"></span>
+            {{ status.running ? $t('Running') : $t('Stopped') }}
+          </div>
         </div>
         <div class="status-item">
           <div class="status-label">{{ $t('MQTT') }}</div>
-          <div class="status-value">{{ status.mqttConnected ? $t('Connected') : $t('Disconnected') }}</div>
+          <div class="status-value">
+            <span class="status-dot" :class="status.mqttConnected ? 'ok' : 'bad'"></span>
+            {{ status.mqttConnected ? $t('Connected') : $t('Disconnected') }}
+          </div>
         </div>
         <div class="status-item">
           <div class="status-label">{{ $t('BACnet devices') }}</div>
@@ -19,10 +25,18 @@
           <div class="status-number">{{ status.points }}</div>
         </div>
       </div>
+
       <div class="runtime-details">
-        <span>{{ $t('MQTT broker') }}: {{ status.mqttHost || '-' }}:{{ status.mqttPort || '-' }}</span>
-        <span>{{ $t('Topic root') }}: {{ status.topicRoot || '-' }}</span>
+        <div class="runtime-detail">
+          <span class="runtime-detail-label">{{ $t('MQTT broker') }}</span>
+          <span class="runtime-detail-value">{{ status.mqttHost || '-' }}:{{ status.mqttPort || '-' }}</span>
+        </div>
+        <div class="runtime-detail">
+          <span class="runtime-detail-label">{{ $t('Topic root') }}</span>
+          <span class="runtime-detail-value">{{ status.topicRoot || '-' }}</span>
+        </div>
       </div>
+
       <div class="card-actions">
         <tlt-button @click="loadRuntime">{{ $t('Refresh') }}</tlt-button>
       </div>
@@ -149,14 +163,125 @@ export default {
 </script>
 
 <style scoped>
-.gk-page { display: flex; flex-direction: column; gap: 16px; }
-.status-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; }
-.status-item { min-height: 72px; padding: 14px 16px; border: 1px solid rgba(127,127,127,.25); border-radius: 6px; }
-.status-label { margin-bottom: 7px; font-size: 12px; opacity: .72; }
-.status-value, .status-number { font-size: 18px; font-weight: 600; }
-.runtime-details { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 12px; font-size: 12px; opacity: .8; }
-.card-actions { margin-top: 12px; }
-.gateway-log { min-height: 180px; max-height: 420px; margin: 0; padding: 12px; overflow: auto; border: 1px solid rgba(127,127,127,.25); border-radius: 6px; white-space: pre-wrap; word-break: break-word; font-family: monospace; font-size: 12px; line-height: 1.45; }
-@media (max-width: 900px) { .status-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } }
-@media (max-width: 520px) { .status-grid { grid-template-columns: 1fr; } }
+.gk-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.status-item {
+  min-height: 88px;
+  padding: 16px 18px;
+  border: 1px solid rgba(127,127,127,.22);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.status-label {
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  opacity: .65;
+}
+
+.status-value,
+.status-number {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.status-number {
+  font-size: 26px;
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  margin-right: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+  background: #888;
+}
+
+.status-dot.ok {
+  background: #2e9b57;
+}
+
+.status-dot.bad {
+  background: #c44747;
+}
+
+.runtime-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(127,127,127,.18);
+}
+
+.runtime-detail {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  min-width: 220px;
+}
+
+.runtime-detail-label {
+  font-size: 12px;
+  opacity: .62;
+}
+
+.runtime-detail-value {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.card-actions {
+  margin-top: 14px;
+}
+
+.gateway-log {
+  min-height: 180px;
+  max-height: 420px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid rgba(127,127,127,.25);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .runtime-detail {
+    min-width: 0;
+    width: 100%;
+  }
+}
 </style>

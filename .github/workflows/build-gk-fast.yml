@@ -147,15 +147,41 @@ jobs:
           make package/vuci-app-gk-bacnet-mqtt-api/compile -j2 V=s
           make package/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s
 
-      - name: Build Teltonika Package Manager bundle
+      - name: Build GK-only Teltonika Package Manager bundle
         working-directory: sdk
         run: |
           set -euo pipefail
+
+          cp ipk_packages.json "$RUNNER_TEMP/ipk_packages.full.json"
+          trap 'cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json' EXIT
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          src = json.loads(Path('ipk_packages.json').read_text())
+          entry = src.get('vuci-app-gk-bacnet-mqtt-ui')
+          assert entry, 'missing GK UI Package Manager entry'
+          assert entry.get('name') == 'gk_bacnet_mqtt', entry
+          assert entry.get('vuci_dep') == 'vuci-app-gk-bacnet-mqtt-api', entry
+
+          Path('ipk_packages.json').write_text(
+              json.dumps({'vuci-app-gk-bacnet-mqtt-ui': entry}, indent=2) + '\n'
+          )
+          PY
+
+          echo 'Package Manager input:'
+          cat ipk_packages.json
+
           make pm V=s
+
           PM_BUNDLE="$(find bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"
           test -f "$PM_BUNDLE"
-          echo "Package Manager bundle: $PM_BUNDLE"
+          echo "GK-only Package Manager bundle: $PM_BUNDLE"
           tar -tzf "$PM_BUNDLE"
+
+          cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json
+          trap - EXIT
 
       - name: Collect and verify packages
         run: |

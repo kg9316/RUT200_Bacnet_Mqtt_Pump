@@ -91,17 +91,30 @@ jobs:
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/rpcd/acl.d/*.json "$UI/files/usr/share/rpcd/acl.d/"
           find sdk/bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) -delete 2>/dev/null || true
 
-      - name: Refresh GK package metadata
+      - name: Refresh only GK package metadata
         working-directory: sdk
         run: |
           set -euo pipefail
-          # Cache contains the old 3-package dependency graph. Regenerate package
-          # metadata from the current Makefiles so the single UI IPK does not
-          # retain a dependency on vuci-app-gk-bacnet-mqtt-api.
-          rm -f tmp/.packageinfo tmp/.packagedeps
-          make packageinfo
-          grep -A20 '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo | tee "$RUNNER_TEMP/gk-ui-packageinfo.txt"
-          ! grep -A20 '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo | grep -q 'vuci-app-gk-bacnet-mqtt-api'
+          # Do NOT regenerate packageinfo for the whole Teltonika SDK: many
+          # unrelated vendor packages have unavailable host dependencies.
+          # Generate metadata only for the current GK UI Makefile and replace
+          # its cached stanza.
+          make -s -r -f include/scan.mk IS_TTY=1 SCAN_TARGET="packageinfo" SCAN_DIR="package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui" SCAN_NAME="package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui" SCAN_DEPS="" > "$RUNNER_TEMP/gk-ui.scan" || true
+          if ! grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' "$RUNNER_TEMP/gk-ui.scan"; then
+            echo "Could not generate isolated GK UI package metadata"
+            cat "$RUNNER_TEMP/gk-ui.scan"
+            exit 1
+          fi
+          awk '
+            BEGIN {skip=0}
+            /^Package: vuci-app-gk-bacnet-mqtt-ui$/ {skip=1; next}
+            skip && /^Package:/ {skip=0}
+            !skip {print}
+          ' tmp/.packageinfo > "$RUNNER_TEMP/packageinfo.base"
+          cat "$RUNNER_TEMP/packageinfo.base" "$RUNNER_TEMP/gk-ui.scan" > tmp/.packageinfo
+          rm -f tmp/.packagedeps tmp/.pkg-rebuilt
+          grep -A25 '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo | tee "$RUNNER_TEMP/gk-ui-packageinfo.txt"
+          ! grep -A25 '^Package: vuci-app-gk-bacnet-mqtt-ui$' tmp/.packageinfo | grep -q 'vuci-app-gk-bacnet-mqtt-api'
 
       - name: Pin cached VuCI core
         run: |

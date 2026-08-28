@@ -93,12 +93,20 @@ jobs:
           rm -rf sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
 
-      - name: Refresh metadata
+      - name: Refresh metadata and select GK packages
         working-directory: sdk
         run: |
           set -euo pipefail
           rm -rf tmp
           make defconfig
+
+          ./scripts/config --module PACKAGE_gk-bacnet-mqtt
+          ./scripts/config --module PACKAGE_vuci-app-gk-bacnet-mqtt-api
+          ./scripts/config --module PACKAGE_vuci-app-gk-bacnet-mqtt-ui
+          make defconfig
+
+          echo '=== GK package selection ==='
+          grep -E '^CONFIG_PACKAGE_(gk-bacnet-mqtt|vuci-app-gk-bacnet-mqtt-(api|ui))=' .config || true
           grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
@@ -122,18 +130,36 @@ jobs:
 
           test "$(find dist -maxdepth 1 -name '*.ipk' | wc -l)" -eq 3
 
+          verify_ipk_data() {
+            ipk="$1"
+            out="$2"
+            mkdir -p "$out"
+            if gzip -t "$ipk" 2>/dev/null; then
+              tar -xzf "$ipk" -C "$out"
+            else
+              (cd "$out" && ar x "$(realpath "$ipk")")
+            fi
+            mkdir -p "$out/data"
+            tar -xzf "$out/data.tar.gz" -C "$out/data"
+          }
+
+          CORE_IPK="$(find dist -maxdepth 1 -name 'gk-bacnet-mqtt_*.ipk' | head -1)"
+          CORE_TMP="$(mktemp -d)"
+          verify_ipk_data "$CORE_IPK" "$CORE_TMP"
+          echo '=== Core package files ==='
+          find "$CORE_TMP/data" -type f | sort
+          test -x "$CORE_TMP/data/usr/sbin/gk-bacnet-mqtt"
+          test -f "$CORE_TMP/data/etc/config/gk-bacnet-mqtt"
+          test -x "$CORE_TMP/data/etc/init.d/gk-bacnet-mqtt"
+          rm -rf "$CORE_TMP"
+
           UI_IPK="$(find dist -maxdepth 1 -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
-          tmp="$(mktemp -d)"
-          if gzip -t "$UI_IPK" 2>/dev/null; then
-            tar -xzf "$UI_IPK" -C "$tmp"
-          else
-            (cd "$tmp" && ar x "$(realpath "$UI_IPK")")
-          fi
-          mkdir -p "$tmp/data"
-          tar -xzf "$tmp/data.tar.gz" -C "$tmp/data"
-          find "$tmp/data" -type f | sort
-          find "$tmp/data/www" -type f | grep -E '/(views|assets)/.*GkBacnetMqtt' >/dev/null
-          rm -rf "$tmp"
+          UI_TMP="$(mktemp -d)"
+          verify_ipk_data "$UI_IPK" "$UI_TMP"
+          echo '=== UI package files ==='
+          find "$UI_TMP/data" -type f | sort
+          find "$UI_TMP/data/www" -type f | grep -E '/(views|assets)/.*GkBacnetMqtt' >/dev/null
+          rm -rf "$UI_TMP"
 
       - name: Normalize IPKs
         run: |

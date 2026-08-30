@@ -1,9 +1,13 @@
 local ConfigService = require("api/ConfigService")
 
+-- A named section (Main:make_primary() below) does not need the
+-- general_section flag - that's for a config with no named UCI section at
+-- all. general_section was previously removed for this exact reason
+-- (commit ae29c92), then re-added by commit 35ee950 while fixing something
+-- else, which lines up with when the config form stopped saving.
 local Service = ConfigService:new({
 	delete = false,
 	create = false,
-	general_section = "main",
 })
 
 local Main = Service:section(

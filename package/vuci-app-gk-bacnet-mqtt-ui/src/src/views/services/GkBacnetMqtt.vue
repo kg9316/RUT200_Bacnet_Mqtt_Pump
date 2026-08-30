@@ -46,7 +46,7 @@
       <vuci-named-section
         v-slot="{ s }"
         :uci-data="uciData"
-        :endpoints="[{ endpoint: 'gk_bacnet_mqtt/config/config' }]"
+        :endpoints="[{ endpoint: 'gk_bacnet_mqtt/config' }]"
         name="main"
         data-key="gk_bacnet_mqtt"
         :title="$t('Gateway configuration')"

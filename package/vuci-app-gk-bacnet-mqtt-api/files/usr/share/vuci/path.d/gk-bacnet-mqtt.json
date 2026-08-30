@@ -1,6 +1,6 @@
 [
   {
-    "endpoint": "/gk_bacnet_mqtt/config/{service_group}/{?sid}",
+    "endpoint": "/gk_bacnet_mqtt/config",
     "lua_service": "services/gk_bacnet_mqtt_config",
     "backup_order": 300
   },

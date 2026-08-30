@@ -177,14 +177,23 @@ static void gateway_i_am_handler(uint8_t *request,
     uint16_t vendor_id = 0;
     int rc;
 
-    handler_i_am_bind(request, length, src);
+    (void)length;
     rc = iam_decode_service_request(request,
                                     &device_id,
                                     &max_apdu,
                                     &segmentation,
                                     &vendor_id);
-    if (rc >= 0)
+    if (rc >= 0) {
+        /* address_add_binding() (via handler_i_am_bind()) only updates an
+         * address cache entry that already exists - it never creates one,
+         * so ReadProperty's address_get_by_device() lookup always failed
+         * silently and no request was ever sent (confirmed on-device:
+         * devices discovered, zero points, no timeout/abort/reject logs
+         * because nothing was ever transmitted). address_add() has the
+         * missing "allocate a free slot" fallback. */
+        address_add(device_id, max_apdu, src);
         get_or_create_device(device_id);
+    }
 }
 
 static void gateway_read_property_ack_handler(

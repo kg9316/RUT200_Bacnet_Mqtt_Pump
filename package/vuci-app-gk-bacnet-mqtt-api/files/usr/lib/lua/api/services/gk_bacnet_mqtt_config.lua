@@ -1,65 +1,76 @@
-local ConfigService = require("api/ConfigService")
+local FunctionService = require("api/FunctionService")
+local uci = require("uci")
 
--- general_section tells ConfigService that the generic id "general" (which
--- the frontend uses for a single-instance section, since there is no list
--- to pick a real id from) maps to the actual UCI section name below
--- ("main"). Removing it was tried and made things worse: PUT started
--- returning success without writing anything, because it tried to write a
--- UCI section literally named "general" instead of "main". GET still
--- looked fine without it only because the frontend falls back to "first
--- array entry" when no id matches, masking the real problem.
-local Service = ConfigService:new({
-	delete = false,
-	create = false,
-	general_section = "main",
-})
+-- Rewritten from ConfigService: PUT reliably reported success and echoed
+-- back the correct new values while never touching /etc/config,
+-- /tmp/.uci, or /tmp/.uci-vuci at any level. Root cause is inside
+-- Teltonika's compiled ConfigService/put_logic.lua, which we can't read
+-- beyond string constants. FunctionService (same base BasicService's
+-- GET_TYPE_%s/PUT_TYPE_%s dispatch our working status/interfaces/log
+-- handlers already use) plus a direct uci cursor sidesteps that layer
+-- entirely - same approach as any plain OpenWrt Lua UCI script.
 
-local Main = Service:section(
-	"gk_bacnet_mqtt",
-	"gateway"
-)
-Main:make_primary()
+local Service = FunctionService:new()
 
-local enabled = Main:option("enabled")
-function enabled:validate(value)
-	return self.dt:is_bool(value)
+local OPTIONS = {
+	"enabled", "bacnet_interface", "mqtt_host", "mqtt_port",
+	"topic_root", "poll_ms", "discovery_ms", "max_age_sec",
+}
+
+local function dump(value, depth)
+	depth = depth or 0
+	if depth > 2 then return "..." end
+	if type(value) ~= "table" then
+		return tostring(value)
+	end
+	local parts = {}
+	for k, v in pairs(value) do
+		parts[#parts + 1] = tostring(k) .. "=" .. dump(v, depth + 1)
+	end
+	return "{" .. table.concat(parts, ", ") .. "}"
 end
 
-local bacnet_interface = Main:option("bacnet_interface")
-bacnet_interface.maxlength = 32
-
-local mqtt_host = Main:option("mqtt_host")
-mqtt_host.maxlength = 128
-
-local mqtt_port = Main:option("mqtt_port")
-function mqtt_port:validate(value)
-	local n = tonumber(value)
-	return n ~= nil and n >= 1 and n <= 65535
+function Service:GET_TYPE_config()
+	local cursor = uci.cursor()
+	local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
+	local data = {}
+	for _, opt in ipairs(OPTIONS) do
+		data[opt] = values[opt]
+	end
+	return self:ResponseOK(data)
 end
 
-local topic_root = Main:option("topic_root")
-topic_root.maxlength = 128
+function Service:PUT_TYPE_config(arguments)
+	os.execute(string.format(
+		"logger -t gk-bacnet-mqtt-config 'PUT self.request=%s param=%s self.data=%s'",
+		dump(self.request and self.request.data):gsub("'", ""),
+		dump(arguments):gsub("'", ""),
+		dump(self.data):gsub("'", "")
+	))
 
-local poll_ms = Main:option("poll_ms")
-function poll_ms:validate(value)
-	local n = tonumber(value)
-	return n ~= nil and n >= 100 and n <= 3600000
-end
+	local body = arguments
+	if type(body) ~= "table" and self.request and self.request.data then
+		body = self.request.data.data or self.request.data
+	end
+	if type(body) ~= "table" then
+		return self:ResponseError("No data in request")
+	end
 
-local discovery_ms = Main:option("discovery_ms")
-function discovery_ms:validate(value)
-	local n = tonumber(value)
-	return n ~= nil and n >= 1000 and n <= 3600000
-end
-
-local max_age_sec = Main:option("max_age_sec")
-function max_age_sec:validate(value)
-	local n = tonumber(value)
-	return n ~= nil and n >= 1 and n <= 86400
-end
-
-function Service:PUT_after_commit_hook()
+	local cursor = uci.cursor()
+	for _, opt in ipairs(OPTIONS) do
+		if body[opt] ~= nil then
+			cursor:set("gk_bacnet_mqtt", "main", opt, tostring(body[opt]))
+		end
+	end
+	cursor:commit("gk_bacnet_mqtt")
 	os.execute("/etc/init.d/gk-bacnet-mqtt restart >/dev/null 2>&1 &")
+
+	local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
+	local data = {}
+	for _, opt in ipairs(OPTIONS) do
+		data[opt] = values[opt]
+	end
+	return self:ResponseOK(data)
 end
 
 return Service

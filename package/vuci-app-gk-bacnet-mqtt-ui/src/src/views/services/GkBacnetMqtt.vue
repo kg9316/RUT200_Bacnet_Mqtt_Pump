@@ -16,25 +16,26 @@
       </div>
     </tlt-card>
 
-    <vuci-form v-slot="{ uciData }" config="gk_bacnet_mqtt">
-      <vuci-named-section
-        v-slot="{ s }"
-        :uci-data="uciData"
-        :endpoints="[{ endpoint: 'gk_bacnet_mqtt/config/config' }]"
-        name="general"
-        data-key="gk_bacnet_mqtt"
-        :title="$t('Gateway configuration')"
-      >
-        <vuci-form-item-switch :uci-section="s" :label="$t('Enabled')" name="enabled" />
-        <vuci-form-item-select :uci-section="s" :label="$t('BACnet interface')" name="bacnet_interface" :options="interfaces" />
-        <vuci-form-item-input :uci-section="s" :label="$t('MQTT host')" name="mqtt_host" maxlength="128" />
-        <vuci-form-item-input :uci-section="s" :label="$t('MQTT port')" name="mqtt_port" rules="port" />
-        <vuci-form-item-input :uci-section="s" :label="$t('Topic root')" name="topic_root" maxlength="128" />
-        <vuci-form-item-input :uci-section="s" :label="$t('Poll interval (ms)')" name="poll_ms" rules="uinteger" />
-        <vuci-form-item-input :uci-section="s" :label="$t('Discovery interval (ms)')" name="discovery_ms" rules="uinteger" />
-        <vuci-form-item-input :uci-section="s" :label="$t('Maximum publish age (s)')" name="max_age_sec" rules="uinteger" />
-      </vuci-named-section>
-    </vuci-form>
+    <tlt-card :title="$t('Gateway configuration')">
+      <div v-for="field in configFields" :key="field.key"
+           style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(127,127,127,.15);">
+        <label :for="'gk-cfg-' + field.key" style="opacity:.7;font-size:13px;">{{ field.label }}</label>
+        <select v-if="field.type === 'select'" :id="'gk-cfg-' + field.key" v-model="config[field.key]"
+                style="min-width:200px;padding:8px 10px;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:transparent;color:inherit;">
+          <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
+        </select>
+        <input v-else-if="field.type === 'checkbox'" :id="'gk-cfg-' + field.key" type="checkbox"
+               :checked="config[field.key] === '1'" @change="config[field.key] = $event.target.checked ? '1' : '0'"
+               style="width:18px;height:18px;" />
+        <input v-else :id="'gk-cfg-' + field.key" type="text" v-model="config[field.key]"
+               style="min-width:200px;padding:8px 10px;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:transparent;color:inherit;" />
+      </div>
+
+      <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+        <tlt-button @click="saveConfig">{{ $t('Save & Apply') }}</tlt-button>
+        <span v-if="saveMessage" :style="{color: saveError ? '#c44747' : '#2e9b57', fontSize: '13px'}">{{ saveMessage }}</span>
+      </div>
+    </tlt-card>
 
     <tlt-card :title="$t('Gateway log')">
       <pre style="min-height:180px;max-height:420px;margin:0;padding:12px;overflow:auto;border:1px solid rgba(127,127,127,.25);border-radius:6px;white-space:pre-wrap;word-break:break-word;font-family:monospace;font-size:12px;line-height:1.45;">{{ log || '-' }}</pre>
@@ -61,6 +62,18 @@ export default {
       interfaces: [],
       log: '',
       timer: null,
+      config: {
+        enabled: '0',
+        bacnet_interface: '',
+        mqtt_host: '',
+        mqtt_port: '',
+        topic_root: '',
+        poll_ms: '',
+        discovery_ms: '',
+        max_age_sec: '',
+      },
+      saveMessage: '',
+      saveError: false,
     };
   },
   computed: {
@@ -74,10 +87,23 @@ export default {
         { label: this.$t('Topic root'), value: this.status.topicRoot || '-' },
       ];
     },
+    configFields() {
+      return [
+        { key: 'enabled', label: this.$t('Enabled'), type: 'checkbox' },
+        { key: 'bacnet_interface', label: this.$t('BACnet interface'), type: 'select', options: this.interfaces },
+        { key: 'mqtt_host', label: this.$t('MQTT host'), type: 'text' },
+        { key: 'mqtt_port', label: this.$t('MQTT port'), type: 'text' },
+        { key: 'topic_root', label: this.$t('Topic root'), type: 'text' },
+        { key: 'poll_ms', label: this.$t('Poll interval (ms)'), type: 'text' },
+        { key: 'discovery_ms', label: this.$t('Discovery interval (ms)'), type: 'text' },
+        { key: 'max_age_sec', label: this.$t('Maximum publish age (s)'), type: 'text' },
+      ];
+    },
   },
   mounted() {
     this.loadRuntime();
     this.loadInterfaces();
+    this.loadConfig();
     this.loadLog();
     this.timer = setInterval(() => this.loadRuntime(), 5000);
   },
@@ -133,6 +159,28 @@ export default {
         this.interfaces = Array.isArray(data.interfaces) ? data.interfaces : [];
       } catch (error) {
         this.interfaces = [];
+      }
+    },
+    async loadConfig() {
+      try {
+        const response = await this.$axios.get('/api/gk_bacnet_mqtt/config/config');
+        const data = this.findPayload(response, ['mqtt_host', 'enabled']) || {};
+        this.config = Object.assign({}, this.config, data);
+      } catch (error) {
+        // keep whatever is currently loaded
+      }
+    },
+    async saveConfig() {
+      this.saveMessage = '';
+      try {
+        const response = await this.$axios.put('/api/gk_bacnet_mqtt/config/config', { data: this.config });
+        const data = this.findPayload(response, ['mqtt_host', 'enabled']) || {};
+        this.config = Object.assign({}, this.config, data);
+        this.saveError = false;
+        this.saveMessage = this.$t('Configuration has been applied');
+      } catch (error) {
+        this.saveError = true;
+        this.saveMessage = this.$t('Failed to save configuration');
       }
     },
     async loadLog() {

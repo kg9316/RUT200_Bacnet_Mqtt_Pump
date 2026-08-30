@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=vuci-app-gk-bacnet-mqtt-api
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=14
+PKG_RELEASE:=15
 
 include $(INCLUDE_DIR)/package.mk
 

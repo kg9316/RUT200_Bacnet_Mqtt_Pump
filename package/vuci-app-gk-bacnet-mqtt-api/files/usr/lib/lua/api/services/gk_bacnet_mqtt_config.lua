@@ -52,12 +52,34 @@ local function do_put(self)
 	end
 
 	local cursor = uci.cursor()
-	for _, opt in ipairs(OPTIONS) do
-		if body[opt] ~= nil then
-			cursor:set("gk_bacnet_mqtt", "main", opt, tostring(body[opt]))
+	local set_results = {}
+	local run_ok, run_err = pcall(function()
+		for _, opt in ipairs(OPTIONS) do
+			if body[opt] ~= nil then
+				local ok, err = cursor:set("gk_bacnet_mqtt", "main", opt, tostring(body[opt]))
+				set_results[#set_results + 1] = opt .. "=" .. tostring(ok) .. "/" .. tostring(err)
+			end
 		end
+	end)
+	local save_ok, save_err, commit_ok, commit_err
+	if run_ok then
+		save_ok, save_err = cursor:save("gk_bacnet_mqtt")
+		commit_ok, commit_err = cursor:commit("gk_bacnet_mqtt")
 	end
-	cursor:commit("gk_bacnet_mqtt")
+
+	local ok, f = pcall(io.open, "/tmp/gk-bacnet-mqtt-config-debug.log", "a")
+	if ok and f then
+		f:write(string.format(
+			"confdir=%s savedir=%s\nrun_ok=%s run_err=%s\nset=%s\nsave=%s/%s\ncommit=%s/%s\n---\n",
+			tostring(cursor:get_confdir()), tostring(cursor:get_savedir()),
+			tostring(run_ok), tostring(run_err),
+			table.concat(set_results, ", "),
+			tostring(save_ok), tostring(save_err),
+			tostring(commit_ok), tostring(commit_err)
+		))
+		f:close()
+	end
+
 	local restart = io.popen("/etc/init.d/gk-bacnet-mqtt restart >/dev/null 2>&1 &")
 	if restart then restart:close() end
 

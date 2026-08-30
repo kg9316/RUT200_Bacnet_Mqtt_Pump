@@ -55,6 +55,7 @@ static void mqtt_make_point_topic(char *dst, size_t n, const char *branch,
 {
     char device_name[NAME_LEN];
     char point_name[NAME_LEN];
+    char device_segment[NAME_LEN + 16];
 
     safe_copy(device_name, sizeof(device_name),
               device->have_name ? device->name : "unknown-device");
@@ -63,14 +64,14 @@ static void mqtt_make_point_topic(char *dst, size_t n, const char *branch,
     topic_sanitize(device_name);
     topic_sanitize(point_name);
 
-    snprintf(dst, n, "%s/%s/%s/%lu/%s/%u/%lu",
+    snprintf(device_segment, sizeof(device_segment), "%s_%lu",
+             device_name, (unsigned long)device->device_id);
+
+    snprintf(dst, n, "%s/%s/%s/%s",
              g_topic_root,
              branch,
-             device_name,
-             (unsigned long)device->device_id,
-             point_name,
-             (unsigned)point->object_type,
-             (unsigned long)point->object_instance);
+             device_segment,
+             point_name);
 }
 
 void mqtt_publish_config(DEVICE_STATE *device, POINT_STATE *point)
@@ -190,6 +191,7 @@ bool mqtt_client_is_connected(void)
 void mqtt_client_loop(void)
 {
     int rc;
+    static uint64_t next_reconnect_ms = 0;
 
     if (!g_mosq)
         return;
@@ -199,6 +201,18 @@ void mqtt_client_loop(void)
         g_mqtt_connected = false;
         LOG_WARNF("MQTT loop error: %s; reconnecting", mosquitto_strerror(rc));
         mosquitto_reconnect_async(g_mosq);
+    }
+
+    /* mosquitto_loop() alone does not retry a connection that never
+     * succeeded (e.g. broker unreachable at the initial connect_async())
+     * - it just keeps returning MOSQ_ERR_NO_CONN forever. Retry on our
+     * own timer whenever we're not connected. */
+    if (!g_mqtt_connected) {
+        uint64_t now = monotonic_ms();
+        if (now >= next_reconnect_ms) {
+            mosquitto_reconnect_async(g_mosq);
+            next_reconnect_ms = now + 5000;
+        }
     }
 }
 

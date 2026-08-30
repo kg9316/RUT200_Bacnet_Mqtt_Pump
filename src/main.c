@@ -51,9 +51,14 @@ int main(int argc, char **argv)
 
     rc = mqtt_client_init();
     if (rc != 0) {
-        LOG_ERRORF("MQTT initialization failed rc=%d", rc);
-        LOG_CLOSE();
-        return 1;
+        /* mosquitto_connect_async() does a synchronous initial connect()
+         * and returns MOSQ_ERR_CONN_REFUSED immediately if the broker isn't
+         * reachable yet. Treating that as fatal put the daemon in a
+         * permanent crash-restart loop (procd respawn) instead of letting
+         * mqtt_client_loop()'s mosquitto_reconnect_async() retry in the
+         * background - and it also blocked BACnet discovery/polling, which
+         * doesn't depend on MQTT being up. Log and keep going instead. */
+        LOG_WARNF("MQTT initialization failed rc=%d; continuing, will retry", rc);
     }
 
     if (bacnet_client_init(bacnet_interface) != 0) {

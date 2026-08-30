@@ -522,6 +522,12 @@ static void scheduler_run(void)
 
 int bacnet_client_init(const char *interface_name)
 {
+    /* Teltonika's lib-bacnet reads this extern to pick the BACnet/IP UDP
+     * port; left at its zero-initialized default the stack binds an
+     * ephemeral port instead of 47808, so no Who-Is/I-Am traffic is ever
+     * seen (confirmed on-device: no listener on 0xBAC0 in /proc/net/udp). */
+    gateway_port = 47808;
+
     address_init();
 
     apdu_set_unconfirmed_handler(SERVICE_UNCONFIRMED_I_AM,

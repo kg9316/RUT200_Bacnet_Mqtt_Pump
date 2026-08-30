@@ -1,43 +1,17 @@
 <template>
-  <div class="gk-page">
+  <div style="display:flex;flex-direction:column;gap:16px;">
     <tlt-card :title="$t('Runtime status')">
-      <div class="status-grid">
-        <div class="status-item">
-          <div class="status-label">{{ $t('Service') }}</div>
-          <div class="status-value">
-            <span class="status-dot" :class="status.running ? 'ok' : 'bad'"></span>
-            {{ status.running ? $t('Running') : $t('Stopped') }}
-          </div>
-        </div>
-        <div class="status-item">
-          <div class="status-label">{{ $t('MQTT') }}</div>
-          <div class="status-value">
-            <span class="status-dot" :class="status.mqttConnected ? 'ok' : 'bad'"></span>
-            {{ status.mqttConnected ? $t('Connected') : $t('Disconnected') }}
-          </div>
-        </div>
-        <div class="status-item">
-          <div class="status-label">{{ $t('BACnet devices') }}</div>
-          <div class="status-number">{{ status.devices }}</div>
-        </div>
-        <div class="status-item">
-          <div class="status-label">{{ $t('BACnet points') }}</div>
-          <div class="status-number">{{ status.points }}</div>
-        </div>
+      <div v-for="row in statusRows" :key="row.label"
+           style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(127,127,127,.15);">
+        <span style="opacity:.7;font-size:13px;">{{ row.label }}</span>
+        <span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;text-align:right;">
+          <span v-if="row.dot"
+                :style="{width:'8px',height:'8px',flex:'0 0 auto',borderRadius:'50%',background: row.dot === 'ok' ? '#2e9b57' : '#c44747'}"></span>
+          {{ row.value }}
+        </span>
       </div>
 
-      <div class="runtime-details">
-        <div class="runtime-detail">
-          <span class="runtime-detail-label">{{ $t('MQTT broker') }}</span>
-          <span class="runtime-detail-value">{{ status.mqttHost || '-' }}:{{ status.mqttPort || '-' }}</span>
-        </div>
-        <div class="runtime-detail">
-          <span class="runtime-detail-label">{{ $t('Topic root') }}</span>
-          <span class="runtime-detail-value">{{ status.topicRoot || '-' }}</span>
-        </div>
-      </div>
-
-      <div class="card-actions">
+      <div style="margin-top:14px;">
         <tlt-button @click="loadRuntime">{{ $t('Refresh') }}</tlt-button>
       </div>
     </tlt-card>
@@ -63,8 +37,8 @@
     </vuci-form>
 
     <tlt-card :title="$t('Gateway log')">
-      <pre class="gateway-log">{{ log || '-' }}</pre>
-      <div class="card-actions">
+      <pre style="min-height:180px;max-height:420px;margin:0;padding:12px;overflow:auto;border:1px solid rgba(127,127,127,.25);border-radius:6px;white-space:pre-wrap;word-break:break-word;font-family:monospace;font-size:12px;line-height:1.45;">{{ log || '-' }}</pre>
+      <div style="margin-top:14px;">
         <tlt-button @click="loadLog">{{ $t('Refresh log') }}</tlt-button>
       </div>
     </tlt-card>
@@ -88,6 +62,18 @@ export default {
       log: '',
       timer: null,
     };
+  },
+  computed: {
+    statusRows() {
+      return [
+        { label: this.$t('Service'), value: this.status.running ? this.$t('Running') : this.$t('Stopped'), dot: this.status.running ? 'ok' : 'bad' },
+        { label: this.$t('MQTT'), value: this.status.mqttConnected ? this.$t('Connected') : this.$t('Disconnected'), dot: this.status.mqttConnected ? 'ok' : 'bad' },
+        { label: this.$t('BACnet devices'), value: this.status.devices },
+        { label: this.$t('BACnet points'), value: this.status.points },
+        { label: this.$t('MQTT broker'), value: `${this.status.mqttHost || '-'}:${this.status.mqttPort || '-'}` },
+        { label: this.$t('Topic root'), value: this.status.topicRoot || '-' },
+      ];
+    },
   },
   mounted() {
     this.loadRuntime();
@@ -161,127 +147,3 @@ export default {
   },
 };
 </script>
-
-<style scoped>
-.gk-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.status-item {
-  min-height: 88px;
-  padding: 16px 18px;
-  border: 1px solid rgba(127,127,127,.22);
-  border-radius: 8px;
-  box-sizing: border-box;
-}
-
-.status-label {
-  margin-bottom: 10px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.2;
-  opacity: .65;
-}
-
-.status-value,
-.status-number {
-  min-height: 28px;
-  display: flex;
-  align-items: center;
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.status-number {
-  font-size: 26px;
-}
-
-.status-dot {
-  width: 9px;
-  height: 9px;
-  margin-right: 9px;
-  border-radius: 50%;
-  display: inline-block;
-  flex: 0 0 auto;
-  background: #888;
-}
-
-.status-dot.ok {
-  background: #2e9b57;
-}
-
-.status-dot.bad {
-  background: #c44747;
-}
-
-.runtime-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 28px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(127,127,127,.18);
-}
-
-.runtime-detail {
-  display: flex;
-  gap: 7px;
-  align-items: baseline;
-  min-width: 220px;
-}
-
-.runtime-detail-label {
-  font-size: 12px;
-  opacity: .62;
-}
-
-.runtime-detail-value {
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.card-actions {
-  margin-top: 14px;
-}
-
-.gateway-log {
-  min-height: 180px;
-  max-height: 420px;
-  margin: 0;
-  padding: 12px;
-  overflow: auto;
-  border: 1px solid rgba(127,127,127,.25);
-  border-radius: 6px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: monospace;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-@media (max-width: 900px) {
-  .status-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 520px) {
-  .status-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .runtime-detail {
-    min-width: 0;
-    width: 100%;
-  }
-}
-</style>

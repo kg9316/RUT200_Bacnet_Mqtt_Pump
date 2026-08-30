@@ -133,6 +133,7 @@ jobs:
               out.append(line)
           open(p,'w').write('\n'.join(out)+'\n')
           PY
+          printf '/etc/config/gk_bacnet_mqtt\n' > "$TMP/control/conffiles"
           rm -f "$TMP/control.tar.gz"
           tar -czf "$TMP/control.tar.gz" -C "$TMP/control" .
           OUTDIR="$(cd "$(dirname "$UI_IPK")" && pwd)"
@@ -147,6 +148,7 @@ jobs:
           cat "$TMP/control/control"
           grep -q "^Version: ${PKG_VER}\$" "$TMP/control/control"
           grep -q '^Depends: libc, libmosquitto-ssl, libatomic1, api-core, vuci-ui-core$' "$TMP/control/control"
+          grep -q '^/etc/config/gk_bacnet_mqtt$' "$TMP/control/conffiles"
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"; test -f "$TMP/data/etc/config/gk_bacnet_mqtt"; test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
           test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua"; test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua"
           test -f "$TMP/data/usr/share/vuci/path.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"

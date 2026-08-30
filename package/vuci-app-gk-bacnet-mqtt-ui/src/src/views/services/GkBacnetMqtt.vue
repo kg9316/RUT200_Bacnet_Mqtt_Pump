@@ -47,7 +47,7 @@
         v-slot="{ s }"
         :uci-data="uciData"
         :endpoints="[{ endpoint: 'gk_bacnet_mqtt/config/config' }]"
-        name="main"
+        name="general"
         data-key="gk_bacnet_mqtt"
         :title="$t('Gateway configuration')"
       >

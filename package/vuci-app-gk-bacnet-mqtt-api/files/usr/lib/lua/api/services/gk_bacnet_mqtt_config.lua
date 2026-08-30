@@ -40,13 +40,23 @@ function Service:GET_TYPE_config()
 	return self:ResponseOK(data)
 end
 
+local function debug_dump(self, arguments)
+	local ok, f = pcall(io.open, "/tmp/gk-bacnet-mqtt-config-debug.log", "a")
+	if not ok or not f then
+		return
+	end
+	local ok2, line = pcall(function()
+		return string.format(
+			"self.request=%s\nparam=%s\nself.data=%s\nself.arguments=%s\n---\n",
+			dump(self.request), dump(arguments), dump(self.data), dump(self.arguments)
+		)
+	end)
+	f:write(ok2 and line or ("dump failed: " .. tostring(line) .. "\n---\n"))
+	f:close()
+end
+
 local function do_put(self, arguments)
-	os.execute(string.format(
-		"logger -t gk-bacnet-mqtt-config 'WRITE self.request=%s param=%s self.data=%s'",
-		dump(self.request and self.request.data):gsub("'", ""),
-		dump(arguments):gsub("'", ""),
-		dump(self.data):gsub("'", "")
-	))
+	debug_dump(self, arguments)
 
 	local body = arguments
 	if type(body) ~= "table" and self.request and self.request.data then
@@ -63,7 +73,8 @@ local function do_put(self, arguments)
 		end
 	end
 	cursor:commit("gk_bacnet_mqtt")
-	os.execute("/etc/init.d/gk-bacnet-mqtt restart >/dev/null 2>&1 &")
+	local restart = io.popen("/etc/init.d/gk-bacnet-mqtt restart >/dev/null 2>&1 &")
+	if restart then restart:close() end
 
 	local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
 	local data = {}

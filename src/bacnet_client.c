@@ -552,10 +552,14 @@ void bacnet_client_loop(void)
     uint8_t rx[MAX_MPDU];
     uint16_t pdu_len;
     uint64_t now = monotonic_ms();
+    unsigned interval_ms;
 
     if (now >= g_next_discovery_ms) {
+        interval_ms = (device_count() == 0 && DISCOVERY_EMPTY_MS < g_discovery_ms)
+                          ? DISCOVERY_EMPTY_MS
+                          : g_discovery_ms;
         Send_WhoIs(-1, -1);
-        g_next_discovery_ms = now + g_discovery_ms;
+        g_next_discovery_ms = now + interval_ms;
     }
 
     memset(&src, 0, sizeof(src));

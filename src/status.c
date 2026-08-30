@@ -1,5 +1,6 @@
 #include "status.h"
 
+#include "device_table.h"
 #include "gateway.h"
 #include "mqtt_client.h"
 
@@ -13,17 +14,14 @@ static uint64_t g_next_status_ms = 0;
 static void count_runtime(size_t *devices, size_t *points)
 {
     size_t i;
-    size_t d = 0;
     size_t p = 0;
 
     for (i = 0; i < MAX_DEVICES; i++) {
-        if (!g_devices[i].used)
-            continue;
-        d++;
-        p += g_devices[i].point_count;
+        if (g_devices[i].used)
+            p += g_devices[i].point_count;
     }
 
-    *devices = d;
+    *devices = device_count();
     *points = p;
 }
 

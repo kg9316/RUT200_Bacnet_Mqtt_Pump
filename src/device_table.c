@@ -45,6 +45,19 @@ DEVICE_STATE *get_or_create_device(uint32_t id)
     return NULL;
 }
 
+size_t device_count(void)
+{
+    size_t i;
+    size_t count = 0;
+
+    for (i = 0; i < MAX_DEVICES; i++) {
+        if (g_devices[i].used)
+            count++;
+    }
+
+    return count;
+}
+
 bool object_type_has_present_value(BACNET_OBJECT_TYPE type)
 {
     switch (type) {

@@ -40,28 +40,13 @@ function Service:GET_TYPE_config()
 	return self:ResponseOK(data)
 end
 
-local function debug_dump(self, arguments)
-	local ok, f = pcall(io.open, "/tmp/gk-bacnet-mqtt-config-debug.log", "a")
-	if not ok or not f then
-		return
-	end
-	local ok2, line = pcall(function()
-		return string.format(
-			"self.request=%s\nparam=%s\nself.data=%s\nself.arguments=%s\n---\n",
-			dump(self.request), dump(arguments), dump(self.data), dump(self.arguments)
-		)
-	end)
-	f:write(ok2 and line or ("dump failed: " .. tostring(line) .. "\n---\n"))
-	f:close()
-end
-
-local function do_put(self, arguments)
-	debug_dump(self, arguments)
-
-	local body = arguments
-	if type(body) ~= "table" and self.request and self.request.data then
-		body = self.request.data.data or self.request.data
-	end
+local function do_put(self)
+	-- Confirmed empirically via a temporary debug dump (now removed): the
+	-- dispatcher sets self.arguments directly rather than passing the
+	-- parsed body as a function parameter, and the actual submitted
+	-- fields are one level further in, under .data (matching the
+	-- frontend's {data: config} body).
+	local body = self.arguments and self.arguments.data
 	if type(body) ~= "table" then
 		return self:ResponseError("No data in request")
 	end

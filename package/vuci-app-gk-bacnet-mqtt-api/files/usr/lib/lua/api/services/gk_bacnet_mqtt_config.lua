@@ -1,13 +1,17 @@
 local ConfigService = require("api/ConfigService")
 
--- A named section (Main:make_primary() below) does not need the
--- general_section flag - that's for a config with no named UCI section at
--- all. general_section was previously removed for this exact reason
--- (commit ae29c92), then re-added by commit 35ee950 while fixing something
--- else, which lines up with when the config form stopped saving.
+-- general_section tells ConfigService that the generic id "general" (which
+-- the frontend uses for a single-instance section, since there is no list
+-- to pick a real id from) maps to the actual UCI section name below
+-- ("main"). Removing it was tried and made things worse: PUT started
+-- returning success without writing anything, because it tried to write a
+-- UCI section literally named "general" instead of "main". GET still
+-- looked fine without it only because the frontend falls back to "first
+-- array entry" when no id matches, masking the real problem.
 local Service = ConfigService:new({
 	delete = false,
 	create = false,
+	general_section = "main",
 })
 
 local Main = Service:section(

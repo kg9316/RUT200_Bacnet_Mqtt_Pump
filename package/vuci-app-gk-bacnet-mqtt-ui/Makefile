@@ -8,7 +8,7 @@ APP_DEPENDS:=+libmosquitto-ssl +libatomic +api-core
 CLOSED_GPL_INSTALL:=y
 
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=24
+PKG_RELEASE:=25
 
 ifneq (,$(filter m,$(CONFIG_PACKAGE_$(APP_NAME)))$(DUMP))
 	APP_TLT_NAME:=GK BACnet MQTT

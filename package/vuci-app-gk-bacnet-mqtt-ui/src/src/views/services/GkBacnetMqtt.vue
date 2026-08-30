@@ -16,8 +16,7 @@
       </div>
     </tlt-card>
 
-    <vuci-form v-slot="{ uciData }" config="gk_bacnet_mqtt" editing>
-      <span style="display:none">{{ debugUciData(uciData) }}</span>
+    <vuci-form v-slot="{ uciData }" config="gk_bacnet_mqtt">
       <vuci-named-section
         v-slot="{ s }"
         :uci-data="uciData"
@@ -25,7 +24,6 @@
         name="general"
         data-key="gk_bacnet_mqtt"
         :title="$t('Gateway configuration')"
-        :before-save="debugBeforeSave"
       >
         <vuci-form-item-switch :uci-section="s" :label="$t('Enabled')" name="enabled" />
         <vuci-form-item-select :uci-section="s" :label="$t('BACnet interface')" name="bacnet_interface" :options="interfaces" />
@@ -87,17 +85,6 @@ export default {
     if (this.timer) clearInterval(this.timer);
   },
   methods: {
-    debugUciData(uciData) {
-      if (this._loggedUciData !== JSON.stringify(uciData)) {
-        this._loggedUciData = JSON.stringify(uciData);
-        console.log('[gk-bacnet-mqtt debug] uciData.gk_bacnet_mqtt =', uciData && uciData.gk_bacnet_mqtt);
-      }
-      return '';
-    },
-    debugBeforeSave(payload) {
-      console.log('[gk-bacnet-mqtt debug] beforeSave called with', payload);
-      return Promise.resolve(true);
-    },
     findPayload(value, keys) {
       if (!value || typeof value !== 'object') return null;
       if (keys.some((key) => Object.prototype.hasOwnProperty.call(value, key))) return value;

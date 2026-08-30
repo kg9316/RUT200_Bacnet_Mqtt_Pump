@@ -40,7 +40,7 @@ function Service:GET_TYPE_config()
 	return self:ResponseOK(data)
 end
 
-function Service:PUT_TYPE_config(arguments)
+local function do_put(self, arguments)
 	os.execute(string.format(
 		"logger -t gk-bacnet-mqtt-config 'PUT self.request=%s param=%s self.data=%s'",
 		dump(self.request and self.request.data):gsub("'", ""),
@@ -72,5 +72,17 @@ function Service:PUT_TYPE_config(arguments)
 	end
 	return self:ResponseOK(data)
 end
+
+-- "PUT_TYPE_config" (mirroring the confirmed-working GET_TYPE_%s
+-- convention) got "PUT not implemented" back - so PUT apparently isn't
+-- dispatched the same way as GET. Register every plausible candidate
+-- name at once rather than guess-and-redeploy one at a time; only one
+-- needs to match and the rest are simply unused.
+Service.PUT_TYPE_config = do_put
+Service.PUT_config = do_put
+Service.PUT_TYPE_general = do_put
+Service.PUT_general = do_put
+Service.PUT = do_put
+Service.PUT_TYPE = do_put
 
 return Service

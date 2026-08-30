@@ -36,8 +36,7 @@ jobs:
           test -f sdk/.config
           test -d sdk/package/custom/gk-bacnet-mqtt
           test -d sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
-          test -f "$(find sdk/package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
-      - name: Get BACnet headers
+      - name: Fetch bacnet-stack source
         run: |
           set -euo pipefail
           curl -fsSL https://github.com/bacnet-stack/bacnet-stack/archive/refs/tags/bacnet-stack-1.3.8.tar.gz -o "$RUNNER_TEMP/bacnet.tar.gz"
@@ -50,12 +49,41 @@ jobs:
           TOOLCHAIN_DIR="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
           SYSROOT="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'target-*' | head -1)"
           CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
+          AR="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-ar' | head -1)"
           STRIP="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-strip' | head -1)"
           MOSQDIR="$(find "$SDK/build_dir" -type d -path '*/mosquitto-ssl/mosquitto-2.0.21' | head -1)"
-          LIBBACNET="$(find "$SDK/package/teltonika/libs/lib-bacnet" -type f -name 'libbacnet.so' | head -1)"
-          "$CC" -Os --sysroot="$SYSROOT" -I"$GITHUB_WORKSPACE/src" -I"$BAC/src" -I"$BAC/ports/linux" -I"$BAC/ports/posix" -I"$MOSQDIR/include" "$GITHUB_WORKSPACE/src/main.c" "$GITHUB_WORKSPACE/src/util.c" "$GITHUB_WORKSPACE/src/device_table.c" "$GITHUB_WORKSPACE/src/mqtt_client.c" "$GITHUB_WORKSPACE/src/bacnet_client.c" "$GITHUB_WORKSPACE/src/status.c" "$LIBBACNET" "$MOSQDIR/lib/libmosquitto.so.1" -L"$SDK/staging_dir/usr/lib" -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" -pthread -lrt -lm -latomic -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
+
+          # Build our own bacnet-stack static library instead of linking
+          # Teltonika's lib-bacnet. BACDL_BIP is the plain-client datalink
+          # (no BBMD relay complexity); PRINT_ENABLED lets us call
+          # bip_debug_enable()/bvlc_debug_enable() for BVLC logging.
+          BACDEFS="-DBACDL_BIP=1 -DBBMD_ENABLED=0 -DPRINT_ENABLED=1"
+          BACINC="-I$BAC/src -I$BAC/ports/linux"
+          BACOBJ="$RUNNER_TEMP/bacobj"
+          mkdir -p "$BACOBJ"
+          BACSRC="$BAC/ports/linux/bip-init.c \
+            $BAC/src/bacnet/datalink/bvlc.c \
+            $BAC/src/bacnet/basic/bbmd/h_bbmd.c \
+            $(echo "$BAC"/src/bacnet/*.c) \
+            $(echo "$BAC"/src/bacnet/basic/*.c) \
+            $(echo "$BAC"/src/bacnet/basic/binding/*.c) \
+            $(echo "$BAC"/src/bacnet/basic/service/*.c) \
+            $(echo "$BAC"/src/bacnet/basic/npdu/*.c) \
+            $(echo "$BAC"/src/bacnet/basic/sys/*.c) \
+            $(echo "$BAC"/src/bacnet/basic/tsm/*.c)"
+          for f in $BACSRC; do
+            obj="$BACOBJ/$(echo "$f" | tr '/' '_').o"
+            "$CC" -Os $BACDEFS --sysroot="$SYSROOT" $BACINC -c "$f" -o "$obj"
+          done
+          "$AR" rcs "$BACOBJ/libbacnet.a" "$BACOBJ"/*.o
+
+          "$CC" -Os --sysroot="$SYSROOT" -I"$GITHUB_WORKSPACE/src" $BACINC -I"$MOSQDIR/include" \
+            "$GITHUB_WORKSPACE/src/main.c" "$GITHUB_WORKSPACE/src/util.c" "$GITHUB_WORKSPACE/src/device_table.c" "$GITHUB_WORKSPACE/src/mqtt_client.c" "$GITHUB_WORKSPACE/src/bacnet_client.c" "$GITHUB_WORKSPACE/src/status.c" \
+            -L"$BACOBJ" -lbacnet "$MOSQDIR/lib/libmosquitto.so.1" \
+            -L"$SDK/staging_dir/usr/lib" -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
+            -pthread -lrt -lm -latomic -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           "$STRIP" "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
-          readelf -d "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -qi libbacnet
+          file "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -qi ELF
       - name: Inject runtime without changing cached package graph
         run: |
           set -euo pipefail
@@ -77,7 +105,6 @@ jobs:
           set -euo pipefail
           make package/vuci-app-gk-bacnet-mqtt-ui/compile -j2 V=s
           test -f "$(find bin/packages -type f -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' | head -1)"
-          test -f "$(find bin/packages -type f -name 'lib-bacnet_*.ipk' | head -1)"
       - name: Convert built UI IPK to standalone runtime IPK
         working-directory: sdk
         run: |
@@ -101,7 +128,7 @@ jobs:
           ver = os.environ['PKG_VER']
           for line in lines:
               if line.startswith('Version:'): line='Version: ' + ver
-              elif line.startswith('Depends:'): line='Depends: libc, libmosquitto-ssl, libatomic1, lib-bacnet, api-core, vuci-ui-core'
+              elif line.startswith('Depends:'): line='Depends: libc, libmosquitto-ssl, libatomic1, api-core, vuci-ui-core'
               elif line.startswith('Description:'): line='Description:  GK BACnet to MQTT gateway. Single RutOS package containing daemon, UCI config, API and VuCI UI.'
               out.append(line)
           open(p,'w').write('\n'.join(out)+'\n')
@@ -119,7 +146,7 @@ jobs:
           test -f "$NEW_IPK"
           cat "$TMP/control/control"
           grep -q "^Version: ${PKG_VER}\$" "$TMP/control/control"
-          grep -q '^Depends: libc, libmosquitto-ssl, libatomic1, lib-bacnet, api-core, vuci-ui-core$' "$TMP/control/control"
+          grep -q '^Depends: libc, libmosquitto-ssl, libatomic1, api-core, vuci-ui-core$' "$TMP/control/control"
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"; test -f "$TMP/data/etc/config/gk_bacnet_mqtt"; test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
           test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua"; test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua"
           test -f "$TMP/data/usr/share/vuci/path.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"
@@ -132,14 +159,14 @@ jobs:
         run: |
           set -euo pipefail
           cp ipk_packages.json "$RUNNER_TEMP/ipk_packages.full.json"; trap 'cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json' EXIT
-          printf '%s\n' '{' '  "vuci-app-gk-bacnet-mqtt-ui": {' '    "name": "gk_bacnet_mqtt",' '    "base_dep": "lib-bacnet"' '  }' '}' > ipk_packages.json
+          printf '%s\n' '{' '  "vuci-app-gk-bacnet-mqtt-ui": {' '    "name": "gk_bacnet_mqtt"' '  }' '}' > ipk_packages.json
           rm -f key-build key-build.pub; staging_dir/host/bin/usign -G -p key-build.pub -s key-build
           make -j1 pm V=s
           PM_BUNDLE="$(find bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"; test -f "$PM_BUNDLE"
           LIST="$(tar -tzf "$PM_BUNDLE")"; printf '%s\n' "$LIST"
           test "$(printf '%s\n' "$LIST" | grep -c 'vuci-app-gk-bacnet-mqtt-ui_.*\.ipk$')" -eq 1
           printf '%s\n' "$LIST" | grep -q "vuci-app-gk-bacnet-mqtt-ui_${PKG_VER}_mipsel_24kc.ipk\$"
-          test "$(printf '%s\n' "$LIST" | grep -c 'lib-bacnet_.*\.ipk$')" -eq 1
+          ! printf '%s\n' "$LIST" | grep -q 'lib-bacnet_.*\.ipk$'
           ! printf '%s\n' "$LIST" | grep -q 'gk-bacnet-mqtt_.*\.ipk$'
           ! printf '%s\n' "$LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-api_.*\.ipk$'
           printf '%s\n' "$LIST" | grep -q '^main$'; printf '%s\n' "$LIST" | grep -q '^main.sig$'

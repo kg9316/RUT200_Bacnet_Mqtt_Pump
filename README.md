@@ -27,8 +27,7 @@ src/
 package/
 ├── gk-bacnet-mqtt/
 ├── vuci-app-gk-bacnet-mqtt-api/
-├── vuci-app-gk-bacnet-mqtt-ui/
-└── build-shims/lib-bacnet/
+└── vuci-app-gk-bacnet-mqtt-ui/
 ```
 
 The daemon performs BACnet/IP discovery, object enumeration, metadata reads, Present Value polling, MQTT reconnect handling, retained configuration topics, live value topics and publish-on-change with maximum-age refresh.
@@ -45,16 +44,16 @@ vuci-app-gk-bacnet-mqtt-ui
 
 The UI package depends on the API package and core daemon. The API package depends on the core daemon.
 
-The core daemon uses RutOS/Teltonika runtime libraries:
+The core daemon links bacnet-stack 1.3.8 statically (fetched and compiled by
+CI, `BACDL_BIP` with `BBMD_ENABLED=0`) rather than depending on Teltonika's
+proprietary `lib-bacnet`/`libbacnet.so`. Its only runtime library dependencies
+are:
 
 ```text
 gk-bacnet-mqtt
-├── lib-bacnet
 ├── libmosquitto-ssl
 └── libatomic
 ```
-
-`lib-bacnet` is Teltonika's BACnet runtime dependency. The GPL SDK contains `libbacnet.so` but does not expose `lib-bacnet` as a normal package definition, so CI injects a build-time shim that exposes the SDK library to OpenWrt's ELF dependency scanner. The shim itself is not published.
 
 ## Logging
 
@@ -195,7 +194,6 @@ opkg install /tmp/gk-bacnet-mqtt_*.ipk \
 ## Still to validate on hardware
 
 - VuCI rendering/API compatibility on the exact RUT200 firmware build
-- actual availability/resolution of Teltonika `lib-bacnet` through Package Manager
 - BACnet discovery/polling against physical devices
 - MQTT TLS configuration
 - RUT140/RUT14X SDK target, runtime libraries and package compatibility before enabling RUT14X CI

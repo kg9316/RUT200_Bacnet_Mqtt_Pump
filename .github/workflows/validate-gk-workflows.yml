@@ -18,7 +18,6 @@ jobs:
       - name: Verify required project package files
         run: |
           set -euo pipefail
-          test -f package/build-shims/lib-bacnet/Makefile
           test -f package/gk-bacnet-mqtt/Makefile
           test -f package/vuci-app-gk-bacnet-mqtt-api/Makefile
           test -f package/vuci-app-gk-bacnet-mqtt-ui/Makefile

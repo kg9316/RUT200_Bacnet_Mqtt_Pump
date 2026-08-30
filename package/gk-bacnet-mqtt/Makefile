@@ -10,13 +10,14 @@ define Package/gk-bacnet-mqtt
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=GK BACnet to MQTT Gateway
-  DEPENDS:=+libmosquitto-ssl +libatomic +lib-bacnet +api-core
+  DEPENDS:=+libmosquitto-ssl +libatomic +api-core
 endef
 
 define Package/gk-bacnet-mqtt/description
  Native BACnet/IP to MQTT gateway for Teltonika RUT2M RutOS devices.
  Includes the gateway daemon, UCI configuration, VuCI API and compiled VuCI UI.
- Uses the Teltonika lib-bacnet runtime package matching RUT2M_R_00.07.24.2.
+ Statically links bacnet-stack 1.3.8 (BACDL_BIP) instead of a Teltonika
+ runtime dependency.
 endef
 
 define Build/Compile

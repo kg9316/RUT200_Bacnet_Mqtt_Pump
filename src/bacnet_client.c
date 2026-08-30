@@ -19,13 +19,6 @@
 #include "bacnet/basic/npdu/h_npdu.h"
 #include "bacnet/basic/tsm/tsm.h"
 
-uint32_t gateway_port = 0;
-char gateway_address[32] = {0};
-uint32_t force_gateway = 0;
-uint32_t bbmd_interface = 0;
-uint32_t bbmd_enabled = 0;
-uint32_t bbmd_port = 47808;
-
 static uint64_t g_next_discovery_ms = 0;
 
 static bool application_value_to_uint32(const BACNET_APPLICATION_DATA_VALUE *value,
@@ -529,6 +522,12 @@ int bacnet_client_init(const char *interface_name)
      * broadcast sockets to OS-assigned ephemeral ports instead of 47808 -
      * confirmed on-device (two random ports bound, nothing on 0xBAC0). */
     bip_set_port(0xBAC0);
+
+    /* debug_print_bip()/BVLC logging is gated behind these at runtime even
+     * when compiled with PRINT_ENABLED; without them nothing shows up in
+     * the log regardless of build flags. */
+    bip_debug_enable();
+    bvlc_debug_enable();
 
     address_init();
 

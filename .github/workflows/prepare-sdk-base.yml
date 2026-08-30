@@ -59,14 +59,6 @@ jobs:
           make toolchain/install -j2
           make package/mosquitto/compile -j2
 
-          LIBBACNET="$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1 || true)"
-          if test -z "$LIBBACNET"; then
-            make package/teltonika/libs/lib-bacnet/compile -j2 V=s
-          fi
-          LIBBACNET="$(find package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1 || true)"
-          test -n "$LIBBACNET"
-          test -f "$LIBBACNET"
-
       - name: Verify base before saving
         run: |
           set -euo pipefail
@@ -78,7 +70,6 @@ jobs:
           CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
           test -x "$CC"
           test -n "$(find sdk/build_dir -type f -path '*/mosquitto-ssl/mosquitto-*/lib/libmosquitto.so.1' | head -1)"
-          test -n "$(find sdk/package/teltonika/libs/lib-bacnet -type f -name 'libbacnet.so' | head -1)"
           echo "BASE READY: ${BASE_CACHE_KEY}-${{ runner.os }}"
 
       - name: Save SDK base cache

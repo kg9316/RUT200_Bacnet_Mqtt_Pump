@@ -522,11 +522,13 @@ static void scheduler_run(void)
 
 int bacnet_client_init(const char *interface_name)
 {
-    /* Teltonika's lib-bacnet reads this extern to pick the BACnet/IP UDP
-     * port; left at its zero-initialized default the stack binds an
-     * ephemeral port instead of 47808, so no Who-Is/I-Am traffic is ever
-     * seen (confirmed on-device: no listener on 0xBAC0 in /proc/net/udp). */
-    gateway_port = 47808;
+    /* bacnet-stack's BIP_Port (ports/linux/bip-init.c) has no static
+     * initializer, so it defaults to 0. Apps normally get 0xBAC0 via
+     * dlenv_init()'s BACNET_IP_PORT fallback; we call datalink_init()
+     * directly, so without this bip_init() binds both its unicast and
+     * broadcast sockets to OS-assigned ephemeral ports instead of 47808 -
+     * confirmed on-device (two random ports bound, nothing on 0xBAC0). */
+    bip_set_port(0xBAC0);
 
     address_init();
 

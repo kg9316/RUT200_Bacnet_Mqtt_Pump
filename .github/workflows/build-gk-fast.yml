@@ -45,6 +45,7 @@ jobs:
       - name: Cross compile gateway
         run: |
           set -euo pipefail
+          shopt -s nullglob
           SDK="$GITHUB_WORKSPACE/sdk"; export STAGING_DIR="$SDK/staging_dir"; BAC="$RUNNER_TEMP/bacnet-stack"
           TOOLCHAIN_DIR="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
           SYSROOT="$(find "$SDK/staging_dir" -maxdepth 1 -type d -name 'target-*' | head -1)"
@@ -65,7 +66,6 @@ jobs:
             $BAC/src/bacnet/datalink/bvlc.c \
             $BAC/src/bacnet/basic/bbmd/h_bbmd.c \
             $(echo "$BAC"/src/bacnet/*.c) \
-            $(echo "$BAC"/src/bacnet/basic/*.c) \
             $(echo "$BAC"/src/bacnet/basic/binding/*.c) \
             $(echo "$BAC"/src/bacnet/basic/service/*.c) \
             $(echo "$BAC"/src/bacnet/basic/npdu/*.c) \

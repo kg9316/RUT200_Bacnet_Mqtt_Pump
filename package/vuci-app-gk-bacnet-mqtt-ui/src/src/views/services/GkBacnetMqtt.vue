@@ -173,7 +173,7 @@ export default {
     async saveConfig() {
       this.saveMessage = '';
       try {
-        const response = await this.$axios.put('/api/gk_bacnet_mqtt/config/config', { data: this.config });
+        const response = await this.$axios.post('/api/gk_bacnet_mqtt/config/config', { data: this.config });
         const data = this.findPayload(response, ['mqtt_host', 'enabled']) || {};
         this.config = Object.assign({}, this.config, data);
         this.saveError = false;

@@ -42,7 +42,7 @@ end
 
 local function do_put(self, arguments)
 	os.execute(string.format(
-		"logger -t gk-bacnet-mqtt-config 'PUT self.request=%s param=%s self.data=%s'",
+		"logger -t gk-bacnet-mqtt-config 'WRITE self.request=%s param=%s self.data=%s'",
 		dump(self.request and self.request.data):gsub("'", ""),
 		dump(arguments):gsub("'", ""),
 		dump(self.data):gsub("'", "")
@@ -73,16 +73,21 @@ local function do_put(self, arguments)
 	return self:ResponseOK(data)
 end
 
--- "PUT_TYPE_config" (mirroring the confirmed-working GET_TYPE_%s
--- convention) got "PUT not implemented" back - so PUT apparently isn't
--- dispatched the same way as GET. Register every plausible candidate
--- name at once rather than guess-and-redeploy one at a time; only one
--- needs to match and the rest are simply unused.
+-- PUT_TYPE_config (mirroring the confirmed-working GET_TYPE_%s
+-- convention) got "PUT not implemented" back. Turns out put_logic.lua/
+-- get_logic.lua/post_logic.lua in Teltonika's own api-core source are
+-- ConfigService-only internals (full of section/.type-specific
+-- concepts) - FunctionService never requires them, so it likely has no
+-- PUT dispatch at all, only GET (the simple TYPE convention we already
+-- use) and POST (an "action" mechanism per its own string constants).
+-- Switch to POST, and again register several plausible names against
+-- the same handler rather than guess one at a time.
+Service.POST_TYPE_config = do_put
+Service.POST_config = do_put
+Service.POST_TYPE_general = do_put
+Service.POST_general = do_put
+Service.POST = do_put
+Service.POST_TYPE = do_put
 Service.PUT_TYPE_config = do_put
-Service.PUT_config = do_put
-Service.PUT_TYPE_general = do_put
-Service.PUT_general = do_put
-Service.PUT = do_put
-Service.PUT_TYPE = do_put
 
 return Service

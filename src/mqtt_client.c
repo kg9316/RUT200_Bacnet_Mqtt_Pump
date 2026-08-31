@@ -15,6 +15,8 @@ unsigned g_poll_ms = DEFAULT_POLL_MS;
 unsigned g_discovery_ms = DEFAULT_DISCOVERY_MS;
 unsigned g_max_age_sec = DEFAULT_MAX_AGE_SEC;
 unsigned g_rp_timeout_ms = DEFAULT_RP_TIMEOUT_MS;
+char g_bacnet_interface[64] = DEFAULT_BACNET_IF;
+bool g_enabled = true;
 
 static void mqtt_on_connect(struct mosquitto *mosq, void *userdata, int rc)
 {

@@ -19,11 +19,10 @@ static void signal_handler(int signal_number)
 
 int main(int argc, char **argv)
 {
-    const char *bacnet_interface = DEFAULT_BACNET_IF;
     int rc;
 
     if (argc > 1)
-        bacnet_interface = argv[1];
+        safe_copy(g_bacnet_interface, sizeof(g_bacnet_interface), argv[1]);
     if (argc > 2)
         safe_copy(g_mqtt_host, sizeof(g_mqtt_host), argv[2]);
     if (argc > 3)
@@ -42,7 +41,7 @@ int main(int argc, char **argv)
 
     LOG_OPEN();
     LOG_INFOF("starting BACnet=%s MQTT=%s:%d root=%s poll=%ums discovery=%ums maxAge=%us",
-              bacnet_interface,
+              g_bacnet_interface,
               g_mqtt_host,
               g_mqtt_port,
               g_topic_root,
@@ -62,8 +61,8 @@ int main(int argc, char **argv)
         LOG_WARNF("MQTT initialization failed rc=%d; continuing, will retry", rc);
     }
 
-    if (bacnet_client_init(bacnet_interface) != 0) {
-        LOG_ERRORF("BACnet datalink initialization failed interface=%s", bacnet_interface);
+    if (bacnet_client_init(g_bacnet_interface) != 0) {
+        LOG_ERRORF("BACnet datalink initialization failed interface=%s", g_bacnet_interface);
         mqtt_client_cleanup();
         LOG_CLOSE();
         return 1;
@@ -74,7 +73,10 @@ int main(int argc, char **argv)
 
     while (g_running) {
         mqtt_client_loop();
-        bacnet_client_loop();
+        if (g_enabled)
+            bacnet_client_loop();
+        else
+            usleep(20000);
         status_write_if_due();
         config_reload_if_due();
     }

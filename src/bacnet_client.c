@@ -554,6 +554,18 @@ int bacnet_client_init(const char *interface_name)
     return 0;
 }
 
+int bacnet_client_reinit(const char *interface_name)
+{
+    /* Live interface switch, triggered by config_reload.c when
+     * bacnet_interface changes in UCI: tear down the current datalink
+     * socket and bring it back up on the new interface, without exiting
+     * the process. The device/point table is intentionally left as-is -
+     * address_add() already updates-or-creates by device_id, so a fresh
+     * WhoIs/I-Am cycle on the new interface reconciles it naturally. */
+    datalink_cleanup();
+    return bacnet_client_init(interface_name);
+}
+
 void bacnet_client_loop(void)
 {
     BACNET_ADDRESS src;

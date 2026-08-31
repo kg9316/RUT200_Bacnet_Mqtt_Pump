@@ -1,4 +1,5 @@
 #include "config_reload.h"
+#include "bacnet_client.h"
 #include "gateway.h"
 #include "mqtt_client.h"
 #include "logger.h"
@@ -6,17 +7,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 
 /* uhttpd (uid != root) runs the VuCI config API's Lua handler, which can
  * commit new values to this file but has no permission to restart this
  * (root-owned, procd-managed) daemon - ubus call service set/delete is
- * refused for any non-root caller. Rather than fight that permission
- * boundary, the daemon just watches its own config file's mtime and
- * reloads the simple runtime knobs itself; no restart needed for them.
- * bacnet_interface and enabled still require a manual restart - changing
- * the BACnet datalink or fully stopping the daemon isn't something this
- * process can safely do to itself mid-run. */
+ * refused for any non-root caller, and end users only ever have UI access
+ * (no SSH), so there's no fallback path that needs a privileged restart
+ * at all. The daemon instead watches its own config file's mtime and
+ * reloads every runtime knob itself, entirely in-process:
+ *  - mqtt_host/mqtt_port: mqtt_client_reconnect() against the new broker
+ *  - bacnet_interface: bacnet_client_reinit() tears down and rebinds the
+ *    datalink socket on the new interface
+ *  - enabled: g_enabled gates whether main()'s loop still calls
+ *    bacnet_client_loop() at all - flipping it off pauses discovery,
+ *    polling and publishing without killing the process (which would
+ *    just get respawned by procd anyway) */
 
 #define CONFIG_FILE "/etc/config/gk_bacnet_mqtt"
 #define CONFIG_CHECK_INTERVAL_MS 2000
@@ -45,6 +52,14 @@ static void apply_option(const char *name, const char *value)
         g_discovery_ms = (unsigned)strtoul(value, NULL, 10);
     } else if (strcmp(name, "max_age_sec") == 0) {
         g_max_age_sec = (unsigned)strtoul(value, NULL, 10);
+    } else if (strcmp(name, "bacnet_interface") == 0) {
+        if (strcmp(g_bacnet_interface, value) != 0) {
+            safe_copy(g_bacnet_interface, sizeof(g_bacnet_interface), value);
+            if (bacnet_client_reinit(g_bacnet_interface) != 0)
+                LOG_ERRORF("failed to reinit BACnet datalink on interface=%s", g_bacnet_interface);
+        }
+    } else if (strcmp(name, "enabled") == 0) {
+        g_enabled = (strcmp(value, "1") == 0 || strcasecmp(value, "true") == 0);
     }
 }
 

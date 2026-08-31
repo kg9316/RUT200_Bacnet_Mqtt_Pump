@@ -48,13 +48,14 @@ local function do_put(self)
 
 	-- No service restart is triggered here on purpose: this handler runs
 	-- as uhttpd, not root, and procd's ubus "service" object refuses
-	-- delete/set calls from any non-root caller ("Permission denied") -
-	-- there's no sanctioned way for a Package Manager-installed VuCI app
-	-- to restart its own daemon from here. Instead the daemon itself
-	-- polls this same UCI file's mtime and live-reloads mqtt_host,
-	-- mqtt_port, topic_root, poll_ms, discovery_ms and max_age_sec within
-	-- a couple of seconds (see config_reload.c). bacnet_interface and
-	-- enabled still take effect only after a manual service restart.
+	-- delete/set calls from any non-root caller ("Permission denied"), and
+	-- end users only ever have UI access (no SSH) - so there's no
+	-- sanctioned way for a Package Manager-installed VuCI app to restart
+	-- its own daemon from here at all. Instead the daemon itself polls
+	-- this same UCI file's mtime and live-reloads every option in-process
+	-- within a couple of seconds, including bacnet_interface (rebinds the
+	-- datalink socket) and enabled (pauses/resumes the BACnet loop) -
+	-- see config_reload.c. No restart is ever required from the UI.
 
 	local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
 	local data = {}

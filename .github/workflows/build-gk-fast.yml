@@ -146,10 +146,8 @@ jobs:
           {
             printf '%s\n' 'chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true'
             printf '%s\n' 'chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true'
-            printf '%s\n' 'if [ -f /usr/local/usr/libexec/rpcd/gk-bacnet-mqtt ] && [ ! -e /usr/libexec/rpcd/gk-bacnet-mqtt ]; then'
-            printf '%s\n' '    mkdir -p /usr/libexec/rpcd'
-            printf '%s\n' '    ln -sf /usr/local/usr/libexec/rpcd/gk-bacnet-mqtt /usr/libexec/rpcd/gk-bacnet-mqtt'
-            printf '%s\n' 'fi'
+            printf '%s\n' 'mkdir -p /usr/libexec/rpcd'
+            printf '%s\n' 'ln -sf "${IPKG_INSTROOT:-/usr/local}/usr/libexec/rpcd/gk-bacnet-mqtt" /usr/libexec/rpcd/gk-bacnet-mqtt 2>/dev/null || true'
             printf '%s\n' '/etc/init.d/rpcd restart >/dev/null 2>&1 || true'
           } > "$FIX_FILE"
           if [ -f "$POSTINST" ]; then
@@ -177,7 +175,7 @@ jobs:
           grep -q '^/etc/config/gk_bacnet_mqtt$' "$TMP/control/conffiles"
           grep -q 'chgrp uhttpd /etc/config/gk_bacnet_mqtt' "$TMP/control/postinst"
           grep -q 'chmod 0660 /etc/config/gk_bacnet_mqtt' "$TMP/control/postinst"
-          grep -q 'ln -sf /usr/local/usr/libexec/rpcd/gk-bacnet-mqtt /usr/libexec/rpcd/gk-bacnet-mqtt' "$TMP/control/postinst"
+          grep -q 'ln -sf "${IPKG_INSTROOT:-/usr/local}/usr/libexec/rpcd/gk-bacnet-mqtt" /usr/libexec/rpcd/gk-bacnet-mqtt' "$TMP/control/postinst"
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"; test -f "$TMP/data/etc/config/gk_bacnet_mqtt"; test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
           test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua"; test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua"
           test -f "$TMP/data/usr/share/vuci/path.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"

@@ -80,14 +80,15 @@ local function do_put(self)
 		f:close()
 	end
 
-	-- Not backgrounded, and stdout+stderr captured: the previous
-	-- `restart >/dev/null 2>&1 &` discarded any error, and the daemon's
-	-- in-memory config (topicRoot etc in status.json) never changed after
-	-- Save & Apply even though the UCI file itself now persists correctly -
-	-- need to see whether this actually restarts the service when invoked
-	-- from this process's (uhttpd) context, or fails silently.
+	-- Confirmed via debug capture: calling /etc/init.d/gk-bacnet-mqtt
+	-- restart directly from here fails with "Permission denied" on
+	-- `ubus call service delete/set` - procd refuses those calls from any
+	-- non-root caller, and this Lua handler runs as uhttpd (uid 575), not
+	-- root. Routed through a custom rpcd ubus script instead
+	-- (usr/libexec/rpcd/gk-bacnet-mqtt) - rpcd itself runs as root, so the
+	-- same procd calls succeed when issued from inside that script.
 	local restart_out = ""
-	local restart = io.popen("/etc/init.d/gk-bacnet-mqtt restart 2>&1")
+	local restart = io.popen("ubus call gk-bacnet-mqtt restart '{}' 2>&1")
 	if restart then
 		restart_out = restart:read("*a") or ""
 		restart:close()

@@ -91,13 +91,14 @@ jobs:
           rsync -a --delete --exclude Makefile package/gk-bacnet-mqtt/files/ "$CORE/files/"
           cp gk-bacnet-mqtt "$CORE/files/gk-bacnet-mqtt"
           rsync -a --delete --exclude Makefile package/vuci-app-gk-bacnet-mqtt-ui/ "$UI/"
-          mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d" "$UI/files/usr/lib/lua/api/services" "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d"
+          mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d" "$UI/files/usr/lib/lua/api/services" "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d" "$UI/files/usr/libexec/rpcd"
           cp gk-bacnet-mqtt "$UI/files/usr/sbin/gk-bacnet-mqtt"; chmod 0755 "$UI/files/usr/sbin/gk-bacnet-mqtt"
           cp package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.config "$UI/files/etc/config/gk_bacnet_mqtt"
           cp package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.init "$UI/files/etc/init.d/gk-bacnet-mqtt"; chmod 0755 "$UI/files/etc/init.d/gk-bacnet-mqtt"
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/lib/lua/api/services/*.lua "$UI/files/usr/lib/lua/api/services/"
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/vuci/path.d/*.json "$UI/files/usr/share/vuci/path.d/"
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/rpcd/acl.d/*.json "$UI/files/usr/share/rpcd/acl.d/"
+          cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/libexec/rpcd/gk-bacnet-mqtt "$UI/files/usr/libexec/rpcd/gk-bacnet-mqtt"; chmod 0755 "$UI/files/usr/libexec/rpcd/gk-bacnet-mqtt"
           find sdk/bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) -delete 2>/dev/null || true
       - name: Build UI with cached target graph
         working-directory: sdk
@@ -141,7 +142,7 @@ jobs:
           # already owned by uhttpd) succeed. Fix group ownership/perms on
           # every install so the file stays writable by that handler.
           POSTINST="$TMP/control/postinst"
-          FIX_LINES="$(printf '%s\n%s' 'chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true' 'chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true')"
+          FIX_LINES="$(printf '%s\n%s\n%s' 'chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true' 'chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true' '/etc/init.d/rpcd restart >/dev/null 2>&1 || true')"
           if [ -f "$POSTINST" ]; then
             { head -n1 "$POSTINST"; printf '%s\n' "$FIX_LINES"; tail -n +2 "$POSTINST"; } > "$POSTINST.new"
             mv "$POSTINST.new" "$POSTINST"
@@ -169,6 +170,7 @@ jobs:
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"; test -f "$TMP/data/etc/config/gk_bacnet_mqtt"; test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
           test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua"; test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua"
           test -f "$TMP/data/usr/share/vuci/path.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"
+          test -x "$TMP/data/usr/libexec/rpcd/gk-bacnet-mqtt"
           test -n "$(find "$TMP/data/www/views" -type f | head -1)"
           rm -rf "$TMP"
           find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' \) -delete

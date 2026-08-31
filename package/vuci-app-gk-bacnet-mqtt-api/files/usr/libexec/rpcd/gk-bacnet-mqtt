@@ -1,0 +1,26 @@
+#!/bin/sh
+# rpcd ubus script: exposes a "restart" method backed by rpcd, which runs
+# as root. procd's "service" ubus object refuses delete/set calls from any
+# non-root caller (verified: uhttpd, the uid our VuCI Lua API runs as, gets
+# "Permission denied" calling /etc/init.d/gk-bacnet-mqtt restart directly).
+# Routing the restart through rpcd sidesteps that, since rpcd itself is the
+# one issuing the ubus service calls.
+
+case "$1" in
+	list)
+		echo '{ "restart": {} }'
+		;;
+	call)
+		case "$2" in
+			restart)
+				cat >/dev/null
+				/etc/init.d/gk-bacnet-mqtt restart >/dev/null 2>&1
+				echo '{ "ok": true }'
+				;;
+			*)
+				echo '{ "error": "Method not found" }'
+				exit 1
+				;;
+		esac
+		;;
+esac

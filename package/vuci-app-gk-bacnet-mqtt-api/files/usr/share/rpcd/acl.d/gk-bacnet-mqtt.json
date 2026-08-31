@@ -10,7 +10,10 @@
     "write": {
       "api": [
         "/gk_bacnet_mqtt/config/*"
-      ]
+      ],
+      "ubus": {
+        "gk-bacnet-mqtt": [ "restart" ]
+      }
     }
   }
 }

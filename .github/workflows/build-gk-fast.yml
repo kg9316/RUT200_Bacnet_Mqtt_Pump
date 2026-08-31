@@ -144,11 +144,15 @@ jobs:
           POSTINST="$TMP/control/postinst"
           FIX_FILE="$(mktemp)"
           {
-            printf '%s\n' 'chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true'
-            printf '%s\n' 'chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true'
-            printf '%s\n' 'mkdir -p /usr/libexec/rpcd'
-            printf '%s\n' 'ln -sf "${IPKG_INSTROOT:-/usr/local}/usr/libexec/rpcd/gk-bacnet-mqtt" /usr/libexec/rpcd/gk-bacnet-mqtt 2>/dev/null || true'
-            printf '%s\n' '/etc/init.d/rpcd restart >/dev/null 2>&1 || true'
+            printf '%s\n' '{'
+            printf '%s\n' '  echo "ran $(date)"; echo "IPKG_INSTROOT=${IPKG_INSTROOT}"'
+            printf '%s\n' '  chgrp uhttpd /etc/config/gk_bacnet_mqtt; echo "chgrp rc=$?"'
+            printf '%s\n' '  chmod 0660 /etc/config/gk_bacnet_mqtt; echo "chmod rc=$?"'
+            printf '%s\n' '  mkdir -p /usr/libexec/rpcd; echo "mkdir rc=$?"'
+            printf '%s\n' '  ln -sf "${IPKG_INSTROOT:-/usr/local}/usr/libexec/rpcd/gk-bacnet-mqtt" /usr/libexec/rpcd/gk-bacnet-mqtt; echo "ln rc=$?"'
+            printf '%s\n' '  ls -la /usr/libexec/rpcd/gk-bacnet-mqtt'
+            printf '%s\n' '  /etc/init.d/rpcd restart; echo "rpcd restart rc=$?"'
+            printf '%s\n' '} >/tmp/gk-bacnet-mqtt-postinst-debug.log 2>&1'
           } > "$FIX_FILE"
           if [ -f "$POSTINST" ]; then
             { head -n1 "$POSTINST"; cat "$FIX_FILE"; tail -n +2 "$POSTINST"; } > "$POSTINST.new"

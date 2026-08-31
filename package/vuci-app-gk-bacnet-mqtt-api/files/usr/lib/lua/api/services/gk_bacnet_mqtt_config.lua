@@ -80,8 +80,23 @@ local function do_put(self)
 		f:close()
 	end
 
-	local restart = io.popen("/etc/init.d/gk-bacnet-mqtt restart >/dev/null 2>&1 &")
-	if restart then restart:close() end
+	-- Not backgrounded, and stdout+stderr captured: the previous
+	-- `restart >/dev/null 2>&1 &` discarded any error, and the daemon's
+	-- in-memory config (topicRoot etc in status.json) never changed after
+	-- Save & Apply even though the UCI file itself now persists correctly -
+	-- need to see whether this actually restarts the service when invoked
+	-- from this process's (uhttpd) context, or fails silently.
+	local restart_out = ""
+	local restart = io.popen("/etc/init.d/gk-bacnet-mqtt restart 2>&1")
+	if restart then
+		restart_out = restart:read("*a") or ""
+		restart:close()
+	end
+	local ok2, f2 = pcall(io.open, "/tmp/gk-bacnet-mqtt-config-debug.log", "a")
+	if ok2 and f2 then
+		f2:write("restart_out=" .. restart_out .. "\n---\n")
+		f2:close()
+	end
 
 	local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
 	local data = {}

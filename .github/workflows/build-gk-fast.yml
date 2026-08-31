@@ -134,6 +134,21 @@ jobs:
           open(p,'w').write('\n'.join(out)+'\n')
           PY
           printf '/etc/config/gk_bacnet_mqtt\n' > "$TMP/control/conffiles"
+          # The config API's Lua handler runs as the uhttpd user (uid/gid
+          # uhttpd), not root, so it calls uci.cursor():commit() with no
+          # write access to a root:root 0644 file - commit() silently fails
+          # with "uci: I/O error" while set()/save() (writing to /tmp/.uci,
+          # already owned by uhttpd) succeed. Fix group ownership/perms on
+          # every install so the file stays writable by that handler.
+          POSTINST="$TMP/control/postinst"
+          FIX_LINES="$(printf '%s\n%s' 'chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true' 'chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true')"
+          if [ -f "$POSTINST" ]; then
+            { head -n1 "$POSTINST"; printf '%s\n' "$FIX_LINES"; tail -n +2 "$POSTINST"; } > "$POSTINST.new"
+            mv "$POSTINST.new" "$POSTINST"
+          else
+            printf '#!/bin/sh\n%s\nexit 0\n' "$FIX_LINES" > "$POSTINST"
+          fi
+          chmod 0755 "$POSTINST"
           rm -f "$TMP/control.tar.gz"
           tar -czf "$TMP/control.tar.gz" -C "$TMP/control" .
           OUTDIR="$(cd "$(dirname "$UI_IPK")" && pwd)"
@@ -149,6 +164,8 @@ jobs:
           grep -q "^Version: ${PKG_VER}\$" "$TMP/control/control"
           grep -q '^Depends: libc, libmosquitto-ssl, libatomic1, api-core, vuci-ui-core$' "$TMP/control/control"
           grep -q '^/etc/config/gk_bacnet_mqtt$' "$TMP/control/conffiles"
+          grep -q 'chgrp uhttpd /etc/config/gk_bacnet_mqtt' "$TMP/control/postinst"
+          grep -q 'chmod 0660 /etc/config/gk_bacnet_mqtt' "$TMP/control/postinst"
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"; test -f "$TMP/data/etc/config/gk_bacnet_mqtt"; test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
           test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua"; test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua"
           test -f "$TMP/data/usr/share/vuci/path.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"

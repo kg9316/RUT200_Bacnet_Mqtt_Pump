@@ -143,20 +143,15 @@ jobs:
           # every install so the file stays writable by that handler.
           POSTINST="$TMP/control/postinst"
           FIX_FILE="$(mktemp)"
-          cat > "$FIX_FILE" <<'FIX'
-chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true
-chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true
-# RutOS Package Manager installs package payloads under /usr/local
-# mirroring the real root layout. Some paths (/etc/config, /etc/init.d)
-# get transparently picked up by the real system; /usr/libexec/rpcd does
-# not - rpcd only scans the real path, so our ubus restart script is
-# invisible to it unless explicitly symlinked into place.
-if [ -f /usr/local/usr/libexec/rpcd/gk-bacnet-mqtt ] && [ ! -e /usr/libexec/rpcd/gk-bacnet-mqtt ]; then
-	mkdir -p /usr/libexec/rpcd
-	ln -sf /usr/local/usr/libexec/rpcd/gk-bacnet-mqtt /usr/libexec/rpcd/gk-bacnet-mqtt
-fi
-/etc/init.d/rpcd restart >/dev/null 2>&1 || true
-FIX
+          {
+            printf '%s\n' 'chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true'
+            printf '%s\n' 'chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true'
+            printf '%s\n' 'if [ -f /usr/local/usr/libexec/rpcd/gk-bacnet-mqtt ] && [ ! -e /usr/libexec/rpcd/gk-bacnet-mqtt ]; then'
+            printf '%s\n' '    mkdir -p /usr/libexec/rpcd'
+            printf '%s\n' '    ln -sf /usr/local/usr/libexec/rpcd/gk-bacnet-mqtt /usr/libexec/rpcd/gk-bacnet-mqtt'
+            printf '%s\n' 'fi'
+            printf '%s\n' '/etc/init.d/rpcd restart >/dev/null 2>&1 || true'
+          } > "$FIX_FILE"
           if [ -f "$POSTINST" ]; then
             { head -n1 "$POSTINST"; cat "$FIX_FILE"; tail -n +2 "$POSTINST"; } > "$POSTINST.new"
             mv "$POSTINST.new" "$POSTINST"

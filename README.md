@@ -93,7 +93,11 @@ The page provides:
 - maximum publish age
 - last 200 matching RutOS log lines
 
-Saving configuration restarts `gk-bacnet-mqtt` so the new settings take effect.
+Saving configuration takes effect live, typically within a couple of seconds -
+`gk-bacnet-mqtt` watches its own UCI config file and reloads every setting
+in-process (including rebinding the BACnet datalink on an interface change,
+and pausing/resuming on enabled/disabled), so no restart is ever needed from
+the UI.
 
 ## Default UCI configuration
 

@@ -24,9 +24,9 @@
                 style="min-width:200px;padding:8px 10px;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:transparent;color:inherit;">
           <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
         </select>
-        <input v-else-if="field.type === 'checkbox'" :id="'gk-cfg-' + field.key" type="checkbox"
-               :checked="config[field.key] === '1'" @change="config[field.key] = $event.target.checked ? '1' : '0'"
-               style="width:18px;height:18px;" />
+        <tlt-switch v-else-if="field.type === 'switch'" :id="'gk-cfg-' + field.key"
+                    :model-value="config[field.key] === '1'"
+                    @update:model-value="config[field.key] = $event ? '1' : '0'" />
         <input v-else :id="'gk-cfg-' + field.key" type="text" v-model="config[field.key]"
                style="min-width:200px;padding:8px 10px;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:transparent;color:inherit;" />
       </div>
@@ -39,8 +39,9 @@
 
     <tlt-card :title="$t('Gateway log')">
       <pre style="min-height:180px;max-height:420px;margin:0;padding:12px;overflow:auto;border:1px solid rgba(127,127,127,.25);border-radius:6px;white-space:pre-wrap;word-break:break-word;font-family:monospace;font-size:12px;line-height:1.45;">{{ log || '-' }}</pre>
-      <div style="margin-top:14px;">
+      <div style="margin-top:14px;display:flex;gap:12px;">
         <tlt-button @click="loadLog">{{ $t('Refresh log') }}</tlt-button>
+        <tlt-button @click="clearLog">{{ $t('Clear log') }}</tlt-button>
       </div>
     </tlt-card>
   </div>
@@ -89,7 +90,7 @@ export default {
     },
     configFields() {
       return [
-        { key: 'enabled', label: this.$t('Enabled'), type: 'checkbox' },
+        { key: 'enabled', label: this.$t('Enabled'), type: 'switch' },
         { key: 'bacnet_interface', label: this.$t('BACnet interface'), type: 'select', options: this.interfaces },
         { key: 'mqtt_host', label: this.$t('MQTT host'), type: 'text' },
         { key: 'mqtt_port', label: this.$t('MQTT port'), type: 'text' },
@@ -191,6 +192,11 @@ export default {
       } catch (error) {
         this.log = this.$t('Unable to read gateway log');
       }
+    },
+    clearLog() {
+      // Only clears this view; logread has no per-tag clear, and the
+      // underlying system log is shared with every other service.
+      this.log = '';
     },
   },
 };

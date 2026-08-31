@@ -142,13 +142,28 @@ jobs:
           # already owned by uhttpd) succeed. Fix group ownership/perms on
           # every install so the file stays writable by that handler.
           POSTINST="$TMP/control/postinst"
-          FIX_LINES="$(printf '%s\n%s\n%s' 'chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true' 'chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true' '/etc/init.d/rpcd restart >/dev/null 2>&1 || true')"
+          FIX_FILE="$(mktemp)"
+          cat > "$FIX_FILE" <<'FIX'
+chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true
+chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true
+# RutOS Package Manager installs package payloads under /usr/local
+# mirroring the real root layout. Some paths (/etc/config, /etc/init.d)
+# get transparently picked up by the real system; /usr/libexec/rpcd does
+# not - rpcd only scans the real path, so our ubus restart script is
+# invisible to it unless explicitly symlinked into place.
+if [ -f /usr/local/usr/libexec/rpcd/gk-bacnet-mqtt ] && [ ! -e /usr/libexec/rpcd/gk-bacnet-mqtt ]; then
+	mkdir -p /usr/libexec/rpcd
+	ln -sf /usr/local/usr/libexec/rpcd/gk-bacnet-mqtt /usr/libexec/rpcd/gk-bacnet-mqtt
+fi
+/etc/init.d/rpcd restart >/dev/null 2>&1 || true
+FIX
           if [ -f "$POSTINST" ]; then
-            { head -n1 "$POSTINST"; printf '%s\n' "$FIX_LINES"; tail -n +2 "$POSTINST"; } > "$POSTINST.new"
+            { head -n1 "$POSTINST"; cat "$FIX_FILE"; tail -n +2 "$POSTINST"; } > "$POSTINST.new"
             mv "$POSTINST.new" "$POSTINST"
           else
-            printf '#!/bin/sh\n%s\nexit 0\n' "$FIX_LINES" > "$POSTINST"
+            { printf '#!/bin/sh\n'; cat "$FIX_FILE"; printf 'exit 0\n'; } > "$POSTINST"
           fi
+          rm -f "$FIX_FILE"
           chmod 0755 "$POSTINST"
           rm -f "$TMP/control.tar.gz"
           tar -czf "$TMP/control.tar.gz" -C "$TMP/control" .
@@ -167,6 +182,7 @@ jobs:
           grep -q '^/etc/config/gk_bacnet_mqtt$' "$TMP/control/conffiles"
           grep -q 'chgrp uhttpd /etc/config/gk_bacnet_mqtt' "$TMP/control/postinst"
           grep -q 'chmod 0660 /etc/config/gk_bacnet_mqtt' "$TMP/control/postinst"
+          grep -q 'ln -sf /usr/local/usr/libexec/rpcd/gk-bacnet-mqtt /usr/libexec/rpcd/gk-bacnet-mqtt' "$TMP/control/postinst"
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"; test -f "$TMP/data/etc/config/gk_bacnet_mqtt"; test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
           test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua"; test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua"
           test -f "$TMP/data/usr/share/vuci/path.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"

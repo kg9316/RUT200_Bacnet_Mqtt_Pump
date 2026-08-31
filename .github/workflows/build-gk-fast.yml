@@ -78,7 +78,7 @@ jobs:
           "$AR" rcs "$BACOBJ/libbacnet.a" "$BACOBJ"/*.o
 
           "$CC" -Os --sysroot="$SYSROOT" -I"$GITHUB_WORKSPACE/src" $BACINC -I"$MOSQDIR/include" \
-            "$GITHUB_WORKSPACE/src/main.c" "$GITHUB_WORKSPACE/src/util.c" "$GITHUB_WORKSPACE/src/device_table.c" "$GITHUB_WORKSPACE/src/mqtt_client.c" "$GITHUB_WORKSPACE/src/bacnet_client.c" "$GITHUB_WORKSPACE/src/status.c" \
+            "$GITHUB_WORKSPACE/src/main.c" "$GITHUB_WORKSPACE/src/util.c" "$GITHUB_WORKSPACE/src/device_table.c" "$GITHUB_WORKSPACE/src/mqtt_client.c" "$GITHUB_WORKSPACE/src/bacnet_client.c" "$GITHUB_WORKSPACE/src/status.c" "$GITHUB_WORKSPACE/src/config_reload.c" \
             -L"$BACOBJ" -lbacnet "$MOSQDIR/lib/libmosquitto.so.1" \
             -L"$SDK/staging_dir/usr/lib" -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
             -pthread -lrt -lm -latomic -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
@@ -91,14 +91,13 @@ jobs:
           rsync -a --delete --exclude Makefile package/gk-bacnet-mqtt/files/ "$CORE/files/"
           cp gk-bacnet-mqtt "$CORE/files/gk-bacnet-mqtt"
           rsync -a --delete --exclude Makefile package/vuci-app-gk-bacnet-mqtt-ui/ "$UI/"
-          mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d" "$UI/files/usr/lib/lua/api/services" "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d" "$UI/files/usr/libexec/rpcd"
+          mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d" "$UI/files/usr/lib/lua/api/services" "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d"
           cp gk-bacnet-mqtt "$UI/files/usr/sbin/gk-bacnet-mqtt"; chmod 0755 "$UI/files/usr/sbin/gk-bacnet-mqtt"
           cp package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.config "$UI/files/etc/config/gk_bacnet_mqtt"
           cp package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.init "$UI/files/etc/init.d/gk-bacnet-mqtt"; chmod 0755 "$UI/files/etc/init.d/gk-bacnet-mqtt"
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/lib/lua/api/services/*.lua "$UI/files/usr/lib/lua/api/services/"
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/vuci/path.d/*.json "$UI/files/usr/share/vuci/path.d/"
           cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/share/rpcd/acl.d/*.json "$UI/files/usr/share/rpcd/acl.d/"
-          cp package/vuci-app-gk-bacnet-mqtt-api/files/usr/libexec/rpcd/gk-bacnet-mqtt "$UI/files/usr/libexec/rpcd/gk-bacnet-mqtt"; chmod 0755 "$UI/files/usr/libexec/rpcd/gk-bacnet-mqtt"
           find sdk/bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-ui_*.ipk' -o -name 'gk_bacnet_mqtt.tar.gz' \) -delete 2>/dev/null || true
       - name: Build UI with cached target graph
         working-directory: sdk
@@ -144,15 +143,8 @@ jobs:
           POSTINST="$TMP/control/postinst"
           FIX_FILE="$(mktemp)"
           {
-            printf '%s\n' '{'
-            printf '%s\n' '  echo "ran $(date)"; echo "IPKG_INSTROOT=${IPKG_INSTROOT}"'
-            printf '%s\n' '  chgrp uhttpd /etc/config/gk_bacnet_mqtt; echo "chgrp rc=$?"'
-            printf '%s\n' '  chmod 0660 /etc/config/gk_bacnet_mqtt; echo "chmod rc=$?"'
-            printf '%s\n' '  mkdir -p /usr/libexec/rpcd; echo "mkdir rc=$?"'
-            printf '%s\n' '  ln -sf "${IPKG_INSTROOT:-/usr/local}/usr/libexec/rpcd/gk-bacnet-mqtt" /usr/libexec/rpcd/gk-bacnet-mqtt; echo "ln rc=$?"'
-            printf '%s\n' '  ls -la /usr/libexec/rpcd/gk-bacnet-mqtt'
-            printf '%s\n' '  /etc/init.d/rpcd restart; echo "rpcd restart rc=$?"'
-            printf '%s\n' '} >/tmp/gk-bacnet-mqtt-postinst-debug.log 2>&1'
+            printf '%s\n' 'chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true'
+            printf '%s\n' 'chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true'
           } > "$FIX_FILE"
           if [ -f "$POSTINST" ]; then
             { head -n1 "$POSTINST"; cat "$FIX_FILE"; tail -n +2 "$POSTINST"; } > "$POSTINST.new"
@@ -179,11 +171,9 @@ jobs:
           grep -q '^/etc/config/gk_bacnet_mqtt$' "$TMP/control/conffiles"
           grep -q 'chgrp uhttpd /etc/config/gk_bacnet_mqtt' "$TMP/control/postinst"
           grep -q 'chmod 0660 /etc/config/gk_bacnet_mqtt' "$TMP/control/postinst"
-          grep -q 'ln -sf "${IPKG_INSTROOT:-/usr/local}/usr/libexec/rpcd/gk-bacnet-mqtt" /usr/libexec/rpcd/gk-bacnet-mqtt' "$TMP/control/postinst"
           test -x "$TMP/data/usr/sbin/gk-bacnet-mqtt"; test -f "$TMP/data/etc/config/gk_bacnet_mqtt"; test -x "$TMP/data/etc/init.d/gk-bacnet-mqtt"
           test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua"; test -f "$TMP/data/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua"
           test -f "$TMP/data/usr/share/vuci/path.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/rpcd/acl.d/gk-bacnet-mqtt.json"; test -f "$TMP/data/usr/share/vuci/menu.d/gk-bacnet-mqtt.json"
-          test -x "$TMP/data/usr/libexec/rpcd/gk-bacnet-mqtt"
           test -n "$(find "$TMP/data/www/views" -type f | head -1)"
           rm -rf "$TMP"
           find bin/packages -type f \( -name 'gk-bacnet-mqtt_*.ipk' -o -name 'vuci-app-gk-bacnet-mqtt-api_*.ipk' \) -delete

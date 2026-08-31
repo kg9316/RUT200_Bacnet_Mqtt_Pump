@@ -1,4 +1,5 @@
 #include "bacnet_client.h"
+#include "config_reload.h"
 #include "gateway.h"
 #include "logger.h"
 #include "mqtt_client.h"
@@ -69,11 +70,13 @@ int main(int argc, char **argv)
     }
 
     status_write_now();
+    config_reload_init();
 
     while (g_running) {
         mqtt_client_loop();
         bacnet_client_loop();
         status_write_if_due();
+        config_reload_if_due();
     }
 
     LOG_INFOF("stopping");

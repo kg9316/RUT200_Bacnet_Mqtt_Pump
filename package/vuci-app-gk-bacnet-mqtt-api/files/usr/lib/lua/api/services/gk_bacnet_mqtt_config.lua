@@ -17,19 +17,6 @@ local OPTIONS = {
 	"topic_root", "poll_ms", "discovery_ms", "max_age_sec",
 }
 
-local function dump(value, depth)
-	depth = depth or 0
-	if depth > 2 then return "..." end
-	if type(value) ~= "table" then
-		return tostring(value)
-	end
-	local parts = {}
-	for k, v in pairs(value) do
-		parts[#parts + 1] = tostring(k) .. "=" .. dump(v, depth + 1)
-	end
-	return "{" .. table.concat(parts, ", ") .. "}"
-end
-
 function Service:GET_TYPE_config()
 	local cursor = uci.cursor()
 	local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
@@ -41,63 +28,33 @@ function Service:GET_TYPE_config()
 end
 
 local function do_put(self)
-	-- Confirmed empirically via a temporary debug dump (now removed): the
-	-- dispatcher sets self.arguments directly rather than passing the
-	-- parsed body as a function parameter, and the actual submitted
-	-- fields are one level further in, under .data (matching the
-	-- frontend's {data: config} body).
+	-- The dispatcher sets self.arguments directly rather than passing the
+	-- parsed body as a function parameter; the submitted fields are one
+	-- level further in, under .data (matching the frontend's
+	-- {data: config} body).
 	local body = self.arguments and self.arguments.data
 	if type(body) ~= "table" then
 		return self:ResponseError("No data in request")
 	end
 
 	local cursor = uci.cursor()
-	local set_results = {}
-	local run_ok, run_err = pcall(function()
-		for _, opt in ipairs(OPTIONS) do
-			if body[opt] ~= nil then
-				local ok, err = cursor:set("gk_bacnet_mqtt", "main", opt, tostring(body[opt]))
-				set_results[#set_results + 1] = opt .. "=" .. tostring(ok) .. "/" .. tostring(err)
-			end
+	for _, opt in ipairs(OPTIONS) do
+		if body[opt] ~= nil then
+			cursor:set("gk_bacnet_mqtt", "main", opt, tostring(body[opt]))
 		end
-	end)
-	local save_ok, save_err, commit_ok, commit_err
-	if run_ok then
-		save_ok, save_err = cursor:save("gk_bacnet_mqtt")
-		commit_ok, commit_err = cursor:commit("gk_bacnet_mqtt")
 	end
+	cursor:save("gk_bacnet_mqtt")
+	cursor:commit("gk_bacnet_mqtt")
 
-	local ok, f = pcall(io.open, "/tmp/gk-bacnet-mqtt-config-debug.log", "a")
-	if ok and f then
-		f:write(string.format(
-			"confdir=%s savedir=%s\nrun_ok=%s run_err=%s\nset=%s\nsave=%s/%s\ncommit=%s/%s\n---\n",
-			tostring(cursor:get_confdir()), tostring(cursor:get_savedir()),
-			tostring(run_ok), tostring(run_err),
-			table.concat(set_results, ", "),
-			tostring(save_ok), tostring(save_err),
-			tostring(commit_ok), tostring(commit_err)
-		))
-		f:close()
-	end
-
-	-- Confirmed via debug capture: calling /etc/init.d/gk-bacnet-mqtt
-	-- restart directly from here fails with "Permission denied" on
-	-- `ubus call service delete/set` - procd refuses those calls from any
-	-- non-root caller, and this Lua handler runs as uhttpd (uid 575), not
-	-- root. Routed through a custom rpcd ubus script instead
-	-- (usr/libexec/rpcd/gk-bacnet-mqtt) - rpcd itself runs as root, so the
-	-- same procd calls succeed when issued from inside that script.
-	local restart_out = ""
-	local restart = io.popen("ubus call gk-bacnet-mqtt restart '{}' 2>&1")
-	if restart then
-		restart_out = restart:read("*a") or ""
-		restart:close()
-	end
-	local ok2, f2 = pcall(io.open, "/tmp/gk-bacnet-mqtt-config-debug.log", "a")
-	if ok2 and f2 then
-		f2:write("restart_out=" .. restart_out .. "\n---\n")
-		f2:close()
-	end
+	-- No service restart is triggered here on purpose: this handler runs
+	-- as uhttpd, not root, and procd's ubus "service" object refuses
+	-- delete/set calls from any non-root caller ("Permission denied") -
+	-- there's no sanctioned way for a Package Manager-installed VuCI app
+	-- to restart its own daemon from here. Instead the daemon itself
+	-- polls this same UCI file's mtime and live-reloads mqtt_host,
+	-- mqtt_port, topic_root, poll_ms, discovery_ms and max_age_sec within
+	-- a couple of seconds (see config_reload.c). bacnet_interface and
+	-- enabled still take effect only after a manual service restart.
 
 	local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
 	local data = {}

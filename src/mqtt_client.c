@@ -188,6 +188,21 @@ bool mqtt_client_is_connected(void)
     return g_mqtt_connected;
 }
 
+void mqtt_client_reconnect(void)
+{
+    int rc;
+
+    if (!g_mosq)
+        return;
+
+    mosquitto_disconnect(g_mosq);
+    g_mqtt_connected = false;
+
+    rc = mosquitto_connect_async(g_mosq, g_mqtt_host, g_mqtt_port, 30);
+    if (rc != MOSQ_ERR_SUCCESS)
+        LOG_WARNF("MQTT reconnect to %s:%d failed rc=%d", g_mqtt_host, g_mqtt_port, rc);
+}
+
 void mqtt_client_loop(void)
 {
     int rc;

@@ -1,0 +1,119 @@
+name: 2 - Prepare RUT2M VuCI Cache
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-vuci:
+    name: Build VuCI cache
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    env:
+      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v1
+      VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore exact SDK base cache
+        id: base-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: sdk
+          key: ${{ env.BASE_CACHE_KEY }}-${{ runner.os }}
+
+      - name: Require exact base cache
+        run: |
+          set -euo pipefail
+          test "${{ steps.base-cache.outputs.cache-hit }}" = "true"
+          test -f sdk/include/toplevel.mk
+          test -f sdk/.config
+          test -f sdk/tmp/.packageinfo
+          TOOLCHAIN_DIR="$(find sdk/staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
+          test -n "$TOOLCHAIN_DIR"
+          test -x "$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
+          echo "Using BASE CACHE: ${BASE_CACHE_KEY}-${{ runner.os }}"
+
+      - name: Inject GK packages and register metadata
+        run: |
+          set -euo pipefail
+          rm -rf \
+            sdk/package/custom/gk-bacnet-mqtt \
+            sdk/package/custom/vuci-app-gk-bacnet-mqtt-api \
+            sdk/package/custom/vuci-app-gk-bacnet-mqtt-ui \
+            sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api \
+            sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
+
+          cp -a package/gk-bacnet-mqtt sdk/package/custom/
+          cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/
+          cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('sdk/ipk_packages.json')
+          data = json.loads(p.read_text())
+          data['vuci-app-gk-bacnet-mqtt-ui'] = {
+              'name': 'gk_bacnet_mqtt',
+              'vuci_dep': 'vuci-app-gk-bacnet-mqtt-api'
+          }
+          p.write_text(json.dumps(data, indent=2) + '\n')
+          PY
+
+      - name: Register and select GK packages
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          rm -rf tmp
+          make defconfig
+
+          for pkg in gk-bacnet-mqtt vuci-app-gk-bacnet-mqtt-api vuci-app-gk-bacnet-mqtt-ui; do
+            grep -q "^Package: ${pkg}$" tmp/.packageinfo || {
+              echo "MISSING PACKAGE METADATA: $pkg"
+              exit 1
+            }
+          done
+
+          for sym in \
+            CONFIG_PACKAGE_gk-bacnet-mqtt \
+            CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api \
+            CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui
+          do
+            sed -i "/^${sym}=/d;/^# ${sym} is not set$/d" .config
+            echo "${sym}=m" >> .config
+          done
+          make defconfig
+
+          grep -q '^CONFIG_PACKAGE_gk-bacnet-mqtt=m' .config
+          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-api=m' .config
+          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
+
+      - name: Build VuCI core only
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          make package/vuci-ui-core/compile -j2 V=s
+
+      - name: Verify VuCI build and stamps
+        run: |
+          set -euo pipefail
+          VUCI_CORE="$(find sdk/build_dir -type d -name 'vuci-ui-core-*' | head -1)"
+          test -n "$VUCI_CORE"
+          test -d "$VUCI_CORE"
+          test -f sdk/tmp/.packageinfo
+          grep -q '^Package: vuci-app-gk-bacnet-mqtt-ui$' sdk/tmp/.packageinfo
+          grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' sdk/.config
+          echo "VuCI core: $VUCI_CORE"
+          echo 'VuCI-related stamp files:'
+          find sdk/staging_dir sdk/build_dir -type f -name '*vuci*' 2>/dev/null | head -100 || true
+          echo "VUCI CACHE READY: ${VUCI_CACHE_KEY}-${{ runner.os }}"
+
+      - name: Save prepared VuCI cache
+        uses: actions/cache/save@v4
+        with:
+          path: sdk
+          key: ${{ env.VUCI_CACHE_KEY }}-${{ runner.os }}

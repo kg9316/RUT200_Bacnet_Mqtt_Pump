@@ -1,0 +1,79 @@
+name: 1 - Prepare RUT2M SDK Base Cache
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-base:
+    name: Build SDK base
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    env:
+      SDK_URL: https://firmware.teltonika-networks.com/7.24.2/RUT2M/RUT2M_R_GPL_00.07.24.2.tar.gz
+      SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.2.tar.gz
+      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDK prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            binutils binutils-gold bison build-essential bzip2 ca-certificates curl cmake \
+            default-jdk device-tree-compiler devscripts ecj file flex fuse g++ gawk gcc gcovr \
+            gengetopt gettext git gnupg groff gperf help2man java-wrappers jq libc6-dev \
+            libffi-dev libexpat-dev libncurses5-dev libpcre3-dev libsqlite3-dev libssl-dev \
+            libxml-parser-perl lz4 liblz4-dev libzstd-dev make ocaml ocaml-findlib ocaml-nox \
+            patch pkg-config psmisc python-is-python3 python3.11 python3.11-dev python3-setuptools \
+            python3-yaml rsync ruby sharutils subversion swig u-boot-tools unzip uuid-dev \
+            vim-common wget zip zlib1g-dev gcc-multilib g++-multilib
+
+      - name: Download exact RUT2M GPL SDK
+        run: |
+          set -euo pipefail
+          rm -rf sdk
+          curl -fL --retry 5 --retry-delay 5 "$SDK_URL" -o "$RUNNER_TEMP/$SDK_ARCHIVE"
+          mkdir sdk
+          tar -xzf "$RUNNER_TEMP/$SDK_ARCHIVE" -C sdk --strip-components=1
+          test -f sdk/include/toplevel.mk
+          test -x sdk/scripts/feeds
+
+      - name: Refresh feeds metadata
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          ./scripts/feeds update -a
+          make defconfig
+
+      - name: Build expensive base prerequisites
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          make tools/install -j2
+          make toolchain/install -j2
+          make package/mosquitto/compile -j2
+
+      - name: Verify base before saving
+        run: |
+          set -euo pipefail
+          test -f sdk/include/toplevel.mk
+          test -f sdk/.config
+          test -f sdk/tmp/.packageinfo
+          TOOLCHAIN_DIR="$(find sdk/staging_dir -maxdepth 1 -type d -name 'toolchain-*' | head -1)"
+          test -n "$TOOLCHAIN_DIR"
+          CC="$(find "$TOOLCHAIN_DIR/bin" -maxdepth 1 -type f -name '*-gcc' | head -1)"
+          test -x "$CC"
+          test -n "$(find sdk/build_dir -type f -path '*/mosquitto-ssl/mosquitto-*/lib/libmosquitto.so.1' | head -1)"
+          echo "BASE READY: ${BASE_CACHE_KEY}-${{ runner.os }}"
+
+      - name: Save SDK base cache
+        uses: actions/cache/save@v4
+        with:
+          path: sdk
+          key: ${{ env.BASE_CACHE_KEY }}-${{ runner.os }}

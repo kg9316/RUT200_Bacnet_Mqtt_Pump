@@ -1,0 +1,16 @@
+{
+  "services/gk-bacnet-mqtt": {
+    "description": "GK BACnet MQTT permissions",
+    "read": {
+      "api": [
+        "/gk_bacnet_mqtt/config/*",
+        "/gk_bacnet_mqtt/status/*"
+      ]
+    },
+    "write": {
+      "api": [
+        "/gk_bacnet_mqtt/config/*"
+      ]
+    }
+  }
+}

@@ -1,0 +1,61 @@
+name: 0 - Validate GK Build Workflows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate workflow contract
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify required project package files
+        run: |
+          set -euo pipefail
+          test -f package/gk-bacnet-mqtt/Makefile
+          test -f package/vuci-app-gk-bacnet-mqtt-api/Makefile
+          test -f package/vuci-app-gk-bacnet-mqtt-ui/Makefile
+
+      - name: Verify cache chain names
+        run: |
+          set -euo pipefail
+          grep -q 'BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v1' .github/workflows/prepare-sdk-base.yml
+          grep -q 'BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v1' .github/workflows/prepare-vuci-cache.yml
+          grep -q 'VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v1' .github/workflows/prepare-vuci-cache.yml
+          grep -q 'VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v1' .github/workflows/build-gk-fast.yml
+
+      - name: Enforce Fast Build cache preservation
+        run: |
+          set -euo pipefail
+          FAST=.github/workflows/build-gk-fast.yml
+
+          reject() {
+            pattern="$1"
+            if grep -En "$pattern" "$FAST"; then
+              echo "FORBIDDEN IN FAST BUILD: $pattern"
+              exit 1
+            fi
+          }
+
+          reject 'rm -rf (sdk/)?tmp'
+          reject 'make defconfig'
+          reject 'scripts/feeds (update|install)'
+          reject 'make (tools|toolchain)/install'
+          reject 'package/vuci-ui-core/(clean|compile)'
+          reject 'make clean'
+          reject 'gk-prepared-sdk-RUT2M-00\\.07\\.24\\.2-v[0-9]'
+
+          # Fast Build may use one combined top-level make invocation. Verify that
+          # all three GK package targets are present, rather than requiring three
+          # separate "make package/..." command lines.
+          grep -q 'package/gk-bacnet-mqtt/compile' "$FAST"
+          grep -q 'package/vuci-app-gk-bacnet-mqtt-api/compile' "$FAST"
+          grep -q 'package/vuci-app-gk-bacnet-mqtt-ui/compile' "$FAST"
+
+          echo 'Fast Build contract OK.'

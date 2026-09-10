@@ -132,8 +132,6 @@ jobs:
               out.append(line)
           open(p,'w').write('\n'.join(out)+'\n')
           PY
-          mkdir -p "$TMP/data/usr/share/gk-bacnet-mqtt"
-          printf '%s\n' "$PKG_VER" > "$TMP/data/usr/share/gk-bacnet-mqtt/version"
           printf '/etc/config/gk_bacnet_mqtt\n/etc/gk-bacnet-mqtt/tags.json\n' > "$TMP/control/conffiles"
           # The config API's Lua handler runs as the uhttpd user (uid/gid
           # uhttpd), not root, so it calls uci.cursor():commit() with no
@@ -190,8 +188,7 @@ jobs:
         run: |
           set -euo pipefail
           cp ipk_packages.json "$RUNNER_TEMP/ipk_packages.full.json"; trap 'cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json' EXIT
-          printf '%s\n' '{' '  "vuci-app-gk-bacnet-mqtt-ui": {' '    "name": "gk_bacnet_mqtt"' '  }' '}' > ipk_packages.json
-          rm -f key-build key-build.pub; staging_dir/host/bin/usign -G -p key-build.pub -s key-build
+          printf '%s\n' '{' '  "vuci-app-gk-bacnet-mqtt-ui": {' '    "name": "gk_bacn…20 tokens truncated…pub; staging_dir/host/bin/usign -G -p key-build.pub -s key-build
           make -j1 pm V=s
           PM_BUNDLE="$(find bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"; test -f "$PM_BUNDLE"
           LIST="$(tar -tzf "$PM_BUNDLE")"; printf '%s\n' "$LIST"

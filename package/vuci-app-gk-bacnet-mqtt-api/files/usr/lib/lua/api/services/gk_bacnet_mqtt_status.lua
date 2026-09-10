@@ -19,7 +19,9 @@ function Service:GET_TYPE_status()
     local snapshot = raw and json.parse(raw) or { running = false }
     snapshot = snapshot or { running = false }
     snapshot.pointDetails = nil
-    snapshot.packageVersion = (read_file("/usr/share/gk-bacnet-mqtt/version") or "unknown"):gsub("%s+$", "")
+    local control = read_file("/usr/local/lib/opkg/info/vuci-app-gk-bacnet-mqtt-ui.control")
+        or read_file("/usr/lib/opkg/info/vuci-app-gk-bacnet-mqtt-ui.control") or ""
+    snapshot.packageVersion = control:match("Version:%s*([^\r\n]+)") or "unknown"
     return self:ResponseOK({ running = snapshot.running == true, status = json.stringify(snapshot) })
 end
 

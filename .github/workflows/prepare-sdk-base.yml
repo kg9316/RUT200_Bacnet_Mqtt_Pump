@@ -68,6 +68,15 @@ jobs:
             echo "${sym}=y" >> .config
           done
           make defconfig
+          # Resolve binary package names to this SDK's actual source targets.
+          : > .gk-library-targets
+          for pkg in libcurl libjson-c libuci ca-bundle; do
+            source=$(awk -v pkg="$pkg" '$1 == "Source-Makefile:" { source=$2 } $1 == "Package:" && $2 == pkg { print source; exit }' tmp/.packageinfo)
+            test -n "$source"
+            test -f "$source"
+            echo "${source%/Makefile}/compile" >> .gk-library-targets
+          done
+          cat .gk-library-targets
 
       - name: Build expensive base prerequisites
         if: steps.sdk-cache.outputs.cache-hit != 'true'
@@ -79,7 +88,9 @@ jobs:
             make toolchain/install -j2
           fi
           make package/mosquitto/compile -j2
-          make package/curl/compile package/json-c/compile package/uci/compile package/ca-certificates/compile -j2 V=s
+          while IFS= read -r target; do
+            make "$target" -j2 V=s
+          done < .gk-library-targets
 
       - name: Verify base before saving
         run: |

@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/build-gk-cloud.yml'
+      - '.github/workflows/prepare-sdk-base.yml'
+      - '.github/workflows/prepare-vuci-cache.yml'
+      - '.github/workflows/build-gk-fast.yml'
 
 permissions:
   contents: read

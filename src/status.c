@@ -21,24 +21,21 @@ void status_write_now(void)
 {
     char tmp_path[160];
     size_t i,j,count=0;
-    struct json_object *root=json_object_new_object(), *rows=json_object_new_array();
+    struct json_object *root=json_object_new_object();
     FILE *f;
-    if (!root || !rows) { if(root) json_object_put(root); if(rows) json_object_put(rows); return; }
+    if (!root) return;
     for(i=0;i<MAX_DEVICES;i++) {
         DEVICE_STATE *d=&g_devices[i];
         if(!d->used) continue;
         for(j=0;j<d->point_count;j++) {
             POINT_STATE *p=&d->points[j];
-            struct json_object *row=json_object_new_object();
-            const char *tag=tag_registry_lookup(d->device_id,(unsigned)p->object_type,p->object_instance);
             ++count;
-            STR(row,"t",tag); STR(row,"n",p->name); STR(row,"u",p->unit);
-            STR(row,"d",p->description);
-            NUM(row,"di",d->device_id); NUM(row,"ot",p->object_type);
-            NUM(row,"oi",p->object_instance);
-            json_object_array_add(rows,row);
+            if (p->metadata_complete)
+                tag_registry_set_metadata(d->device_id, (unsigned)p->object_type, p->object_instance,
+                                          p->name, p->unit, p->description);
         }
     }
+    tag_registry_flush_metadata();
     BOOL(root,"running",true); BOOL(root,"mqttConnected",mqtt_client_is_connected());
     NUM(root,"devices",device_count()); NUM(root,"points",count);
     STR(root,"mqttHost",g_mqtt_host); NUM(root,"mqttPort",g_mqtt_port);
@@ -50,7 +47,6 @@ void status_write_now(void)
     NUM(root,"mqttErrors",g_mqtt_diagnostics.failures); NUM(root,"mqttLastSent",g_mqtt_diagnostics.last_sent);
     STR(root,"mqttLastError",g_mqtt_diagnostics.error);
     STR(root,"authLastError",g_mqtt_settings.gk_cloud ? gk_cloud_last_error() : "");
-    json_object_object_add(root,"pointDetails",rows);
     snprintf(tmp_path,sizeof(tmp_path),"%s.%ld",STATUS_FILE,(long)getpid());
     f=fopen(tmp_path,"w");
     if(f) {

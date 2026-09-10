@@ -12,7 +12,8 @@ unsigned g_poll_ms=5000,g_discovery_ms=10000,g_max_age_sec=300;
 size_t device_count(void) { return 1; }
 bool mqtt_client_is_connected(void) { return true; }
 const char *gk_cloud_last_error(void) { return "DNS failure"; }
-const char *tag_registry_lookup(uint32_t d,unsigned t,uint32_t i) { (void)d;(void)t; return i==0 ? "existing-guid" : NULL; }
+void tag_registry_set_metadata(uint32_t d,unsigned t,uint32_t i,const char *n,const char *u,const char *desc) { (void)d;(void)t;(void)i;(void)n;(void)u;(void)desc; }
+void tag_registry_flush_metadata(void) {}
 uint64_t monotonic_ms(void) { return 0; }
 time_t unix_time_now(void) { return 1789036121; }
 int main(void) {
@@ -25,16 +26,9 @@ int main(void) {
     g_mqtt_diagnostics.sent=11; g_mqtt_diagnostics.last_sent=1789036100;
     status_write_now();
     struct json_object *root=json_object_from_file(STATUS_FILE), *rows,*row,*v;
-    assert(root && json_object_object_get_ex(root,"pointDetails",&rows));
-    assert(json_object_array_length(rows)==2);
-    row=json_object_array_get_idx(rows,0);
-    assert(json_object_object_get_ex(row,"n",&v) && strcmp(json_object_get_string(v),p->name)==0);
-    assert(json_object_object_get_ex(row,"t",&v) && strcmp(json_object_get_string(v),"existing-guid")==0);
-    assert(!json_object_object_get_ex(row,"value",&v));
-    assert(json_object_object_get_ex(row,"d",&v) && strcmp(json_object_get_string(v),p->description)==0);
-    assert(json_object_object_get_ex(row,"di",&v) && json_object_get_int(v)==458967);
-    row=json_object_array_get_idx(rows,1);
-    assert(json_object_object_get_ex(row,"t",&v) && strcmp(json_object_get_string(v),"")==0);
+    assert(root && !json_object_object_get_ex(root,"pointDetails",&rows));
+    assert(!strstr(json_object_to_json_string(root),"21.5"));
+    assert(json_object_object_get_ex(root,"points",&v) && json_object_get_int(v)==2);
     assert(json_object_object_get_ex(root,"mqttSent",&v) && json_object_get_int(v)==11);
     assert(!strstr(json_object_to_json_string(root),"DO-NOT-EXPORT-SECRET"));
     json_object_put(root); unlink(STATUS_FILE);

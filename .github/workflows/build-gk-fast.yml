@@ -146,6 +146,8 @@ jobs:
           {
             printf '%s\n' 'chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true'
             printf '%s\n' 'chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true'
+            printf '%s\n' 'chgrp uhttpd /etc/gk-bacnet-mqtt/tags.json 2>/dev/null || true'
+            printf '%s\n' 'chmod 0640 /etc/gk-bacnet-mqtt/tags.json 2>/dev/null || true'
           } > "$FIX_FILE"
           if [ -f "$POSTINST" ]; then
             { head -n1 "$POSTINST"; cat "$FIX_FILE"; tail -n +2 "$POSTINST"; } > "$POSTINST.new"

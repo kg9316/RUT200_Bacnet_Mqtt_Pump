@@ -20,7 +20,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore already prepared VuCI cache
+        id: vuci-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: sdk
+          key: ${{ env.VUCI_CACHE_KEY }}-${{ runner.os }}
+
       - name: Restore exact SDK base cache
+        if: steps.vuci-cache.outputs.cache-hit != 'true'
         id: base-cache
         uses: actions/cache/restore@v4
         with:
@@ -28,6 +36,7 @@ jobs:
           key: ${{ env.BASE_CACHE_KEY }}-${{ runner.os }}
 
       - name: Require exact base cache
+        if: steps.vuci-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           test "${{ steps.base-cache.outputs.cache-hit }}" = "true"
@@ -40,6 +49,7 @@ jobs:
           echo "Using BASE CACHE: ${BASE_CACHE_KEY}-${{ runner.os }}"
 
       - name: Inject GK packages and register metadata
+        if: steps.vuci-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           rm -rf \
@@ -49,6 +59,7 @@ jobs:
             sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-api \
             sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
 
+          mkdir -p sdk/package/custom
           cp -a package/gk-bacnet-mqtt sdk/package/custom/
           cp -a package/vuci-app-gk-bacnet-mqtt-api sdk/package/feeds/vuci/
           cp -a package/vuci-app-gk-bacnet-mqtt-ui sdk/package/feeds/vuci/
@@ -66,6 +77,7 @@ jobs:
           PY
 
       - name: Register and select GK packages
+        if: steps.vuci-cache.outputs.cache-hit != 'true'
         working-directory: sdk
         run: |
           set -euo pipefail
@@ -96,6 +108,7 @@ jobs:
           grep -q '^CONFIG_PACKAGE_vuci-app-gk-bacnet-mqtt-ui=m' .config
 
       - name: Build VuCI core only
+        if: steps.vuci-cache.outputs.cache-hit != 'true'
         working-directory: sdk
         run: |
           set -euo pipefail
@@ -116,6 +129,7 @@ jobs:
           echo "VUCI CACHE READY: ${VUCI_CACHE_KEY}-${{ runner.os }}"
 
       - name: Save prepared VuCI cache
+        if: steps.vuci-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: sdk

@@ -35,7 +35,6 @@ jobs:
           test -f sdk/include/toplevel.mk
           test -f sdk/tmp/.packageinfo
           test -f sdk/.config
-          test -d sdk/package/custom/gk-bacnet-mqtt
           test -d sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
       - name: Fetch bacnet-stack source
         run: |
@@ -88,9 +87,7 @@ jobs:
       - name: Inject runtime without changing cached package graph
         run: |
           set -euo pipefail
-          CORE=sdk/package/custom/gk-bacnet-mqtt; UI=sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
-          rsync -a --delete --exclude Makefile package/gk-bacnet-mqtt/files/ "$CORE/files/"
-          cp gk-bacnet-mqtt "$CORE/files/gk-bacnet-mqtt"
+          UI=sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
           rsync -a --delete --exclude Makefile package/vuci-app-gk-bacnet-mqtt-ui/ "$UI/"
           mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d" "$UI/files/usr/lib/lua/api/services" "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d"
           mkdir -p "$UI/files/etc/gk-bacnet-mqtt"

@@ -17,3 +17,15 @@ responses omit pointDetails to avoid repeatedly sending large point lists to the
 
 MQTT QoS 0 send completion does not prove receipt by the broker or downstream application.
 No credentials are embedded in the source or package configuration.
+
+Version 1.0.0-42 build succeeded:
+https://github.com/kg9316/RUT200_Bacnet_Mqtt_Pump/actions/runs/34469209491
+Source commit: a99aa799a3dfa20ea2f0420478b0deff5634bfa9
+Bundle SHA-256: 7f055b417f817e889298ad746787da92cb175adb2b8e8add7e0babfbd4f1e0e2
+
+Installed on the router; configuration and GUID registry hashes unchanged.
+The live status API returns 22 points, connected MQTT with TLS, increasing sent count,
+zero MQTT errors and no pointDetails in the periodic response.
+The new export handler passed tests against the router's real Lua JSON/UCI libraries:
+22 GUIDs and local metadata, controllerId from saved UCI, no live values or license.
+The installed browser UI passed: point table absent, download contains controllerId and all 22 GUID mappings, dropdown foreground/background verified and screenshot inspected, no JavaScript errors.

@@ -16,7 +16,7 @@ jobs:
       VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v2
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve shipped package version
+      - name: Resolve shipped package version (including UI and export updates)
         run: |
           set -euo pipefail
           VERSION="$(grep -m1 '^PKG_VERSION:=' package/vuci-app-gk-bacnet-mqtt-ui/Makefile | cut -d= -f2)"

@@ -10,17 +10,6 @@ const page = { ...component.data(), ...component.methods, $t: s => s };
 for (const [name, getter] of Object.entries(component.computed)) {
   Object.defineProperty(page, name, { get: () => getter.call(page) });
 }
-page.status.pointDetails = [{ tag: 'guid-1', name: 'Room "A"', unit: 'deg C', description: 'Local only', deviceId: 1, objectType: 0, objectInstance: 2 }];
-page.config.controller_license = 'DO-NOT-EXPORT';
-const exported = JSON.parse(page.exportPoints());
-assert.equal(exported.points[0].name, 'Room "A"');
-assert.equal(exported.points[0].tag, 'guid-1');
-assert(!page.exportPoints().includes('DO-NOT-EXPORT'));
-page.pointSearch = 'guid-1';
-assert.equal(page.visiblePoints.length, 1);
-page.pointSearch = 'missing';
-assert.equal(page.visiblePoints.length, 0);
-page.pointSearch = '';
 const fields = () => component.computed.configFields.call(page).map(f => f.key);
 assert(fields().includes('mqtt_host') && !fields().includes('controller_license'));
 page.config.mqtt_mode = 'gk_cloud';

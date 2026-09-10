@@ -28,11 +28,13 @@ int main(void) {
     assert(root && json_object_object_get_ex(root,"pointDetails",&rows));
     assert(json_object_array_length(rows)==2);
     row=json_object_array_get_idx(rows,0);
-    assert(json_object_object_get_ex(row,"name",&v) && strcmp(json_object_get_string(v),p->name)==0);
-    assert(json_object_object_get_ex(row,"tag",&v) && strcmp(json_object_get_string(v),"existing-guid")==0);
-    assert(json_object_object_get_ex(row,"value",&v) && json_object_get_double(v)==21.5);
+    assert(json_object_object_get_ex(row,"n",&v) && strcmp(json_object_get_string(v),p->name)==0);
+    assert(json_object_object_get_ex(row,"t",&v) && strcmp(json_object_get_string(v),"existing-guid")==0);
+    assert(!json_object_object_get_ex(row,"value",&v));
+    assert(json_object_object_get_ex(row,"d",&v) && strcmp(json_object_get_string(v),p->description)==0);
+    assert(json_object_object_get_ex(row,"di",&v) && json_object_get_int(v)==458967);
     row=json_object_array_get_idx(rows,1);
-    assert(json_object_object_get_ex(row,"tag",&v) && strcmp(json_object_get_string(v),"")==0);
+    assert(json_object_object_get_ex(row,"t",&v) && strcmp(json_object_get_string(v),"")==0);
     assert(json_object_object_get_ex(root,"mqttSent",&v) && json_object_get_int(v)==11);
     assert(!strstr(json_object_to_json_string(root),"DO-NOT-EXPORT-SECRET"));
     json_object_put(root); unlink(STATUS_FILE);

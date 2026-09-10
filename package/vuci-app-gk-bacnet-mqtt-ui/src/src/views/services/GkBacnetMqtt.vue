@@ -20,9 +20,9 @@
       <div v-for="field in configFields" :key="field.key"
            style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(127,127,127,.15);">
         <label :for="'gk-cfg-' + field.key" style="opacity:.7;font-size:13px;">{{ field.label }}</label>
-        <select v-if="field.type === 'select'" :id="'gk-cfg-' + field.key" v-model="config[field.key]" class="gk-select" style="min-width:200px;padding:8px 10px;border:1px solid #768294;border-radius:6px;background:#fff !important;color:#17212e !important;color-scheme:light;">
-          <option style="background:#fff !important;color:#17212e !important;" v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
-        </select>
+        <tlt-select v-if="field.type === 'select'" :id="'gk-cfg-' + field.key"
+                    v-model="config[field.key]" :data-source="field.options.map(opt => ({ key: opt, value: opt }))"
+                    :readonly="false" style="width:200px;" />
         <tlt-switch v-else-if="field.type === 'switch'" :id="'gk-cfg-' + field.key"
                     :model-value="config[field.key] === '1'"
                     @update:model-value="config[field.key] = $event ? '1' : '0'" />
@@ -51,10 +51,9 @@
     </tlt-card>
 
     <tlt-card :title="$t('Gateway log')">
-      <select v-model="logMode" class="gk-select" style="min-width:200px;padding:8px 10px;border:1px solid #768294;border-radius:6px;background:#fff !important;color:#17212e !important;color-scheme:light;" aria-label="Log filter" @change="loadLog">
-        <option style="background:#fff !important;color:#17212e !important;" value="mqtt">{{ $t('MQTT and authentication') }}</option>
-        <option style="background:#fff !important;color:#17212e !important;" value="all">{{ $t('All gateway events') }}</option>
-      </select>
+      <tlt-select id="gk-log-filter" v-model="logMode" :readonly="false" style="width:260px;"
+                  :data-source="[{ key: 'mqtt', value: $t('MQTT and authentication') }, { key: 'all', value: $t('All gateway events') }]"
+                  @update:model-value="loadLog" />
       <pre style="min-height:180px;max-height:420px;margin:0;padding:12px;overflow:auto;border:1px solid rgba(127,127,127,.25);border-radius:6px;white-space:pre-wrap;word-break:break-word;font-family:monospace;font-size:12px;line-height:1.45;">{{ log || '-' }}</pre>
       <div style="margin-top:14px;display:flex;gap:12px;">
         <tlt-button @click="loadLog">{{ $t('Refresh log') }}</tlt-button>
@@ -108,6 +107,7 @@ export default {
   computed: {
     statusRows() {
       return [
+        { label: this.$t('Package version'), value: this.status.packageVersion || '-' },
         { label: this.$t('Service'), value: this.status.running ? this.$t('Running') : this.$t('Stopped'), dot: this.status.running ? 'ok' : 'bad' },
         { label: this.$t('MQTT'), value: this.status.mqttConnected ? this.$t('Connected') : this.$t('Disconnected'), dot: this.status.mqttConnected ? 'ok' : 'bad' },
         { label: this.$t('BACnet devices'), value: this.status.devices },
@@ -170,7 +170,7 @@ export default {
         const response = await this.$axios.get('/api/gk_bacnet_mqtt/status/points');
         const data = this.findPayload(response, ['controllerId', 'points']);
         if (!data || !Array.isArray(data.points)) throw new Error('Invalid point export');
-        const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' }));
+        const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json;charset=utf-8' }));
         const link = document.createElement('a');
         link.href = url; link.download = 'gk-bacnet-points.json';
         document.body.appendChild(link); link.click(); link.remove();

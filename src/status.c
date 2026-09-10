@@ -32,17 +32,10 @@ void status_write_now(void)
             struct json_object *row=json_object_new_object();
             const char *tag=tag_registry_lookup(d->device_id,(unsigned)p->object_type,p->object_instance);
             ++count;
-            STR(row,"tag",tag); STR(row,"name",p->name); STR(row,"unit",p->unit);
-            STR(row,"description",p->description); STR(row,"deviceName",d->name);
-            NUM(row,"deviceId",d->device_id); NUM(row,"objectType",p->object_type);
-            NUM(row,"objectInstance",p->object_instance); BOOL(row,"metadataComplete",p->metadata_complete);
-            NUM(row,"lastQueuedAt",p->last_publish);
-            if(p->have_value) {
-                if(p->value_kind==VALUE_STRING) STR(row,"value",p->string_value);
-                else if(p->value_kind==VALUE_BOOL) BOOL(row,"value",p->bool_value);
-                else if((p->value_kind==VALUE_NUMBER || p->value_kind==VALUE_ENUM) && isfinite(p->numeric_value))
-                    json_object_object_add(row,"value",json_object_new_double(p->numeric_value));
-            }
+            STR(row,"t",tag); STR(row,"n",p->name); STR(row,"u",p->unit);
+            STR(row,"d",p->description);
+            NUM(row,"di",d->device_id); NUM(row,"ot",p->object_type);
+            NUM(row,"oi",p->object_instance);
             json_object_array_add(rows,row);
         }
     }

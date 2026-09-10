@@ -132,6 +132,8 @@ jobs:
               out.append(line)
           open(p,'w').write('\n'.join(out)+'\n')
           PY
+          mkdir -p "$TMP/data/usr/share/gk-bacnet-mqtt"
+          printf '%s\n' "$PKG_VER" > "$TMP/data/usr/share/gk-bacnet-mqtt/version"
           printf '/etc/config/gk_bacnet_mqtt\n/etc/gk-bacnet-mqtt/tags.json\n' > "$TMP/control/conffiles"
           # The config API's Lua handler runs as the uhttpd user (uid/gid
           # uhttpd), not root, so it calls uci.cursor():commit() with no

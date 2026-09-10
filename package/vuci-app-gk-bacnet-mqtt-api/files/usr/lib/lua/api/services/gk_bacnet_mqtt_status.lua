@@ -19,22 +19,24 @@ function Service:GET_TYPE_status()
     local snapshot = raw and json.parse(raw) or { running = false }
     snapshot = snapshot or { running = false }
     snapshot.pointDetails = nil
+    snapshot.packageVersion = (read_file("/usr/share/gk-bacnet-mqtt/version") or "unknown"):gsub("%s+$", "")
     return self:ResponseOK({ running = snapshot.running == true, status = json.stringify(snapshot) })
 end
 
 function Service:GET_TYPE_points()
     local raw = read_file("/tmp/gk-bacnet-mqtt-status.json")
     local snapshot = raw and json.parse(raw) or {}
-    local points = {}
-    for _, p in ipairs((snapshot or {}).pointDetails or {}) do
-        points[#points + 1] = {
-            tag = p.tag, name = p.name or "", unit = p.unit or "", description = p.description or "",
-            deviceId = p.deviceId, objectType = p.objectType, objectInstance = p.objectInstance
-        }
+    local points = (snapshot or {}).pointDetails or {}
+    -- Accept a snapshot from the previous daemon while an upgrade is in progress.
+    for i, p in ipairs(points) do
+        if p.tag ~= nil or p.deviceId ~= nil then
+            points[i] = { t = p.tag, n = p.name or "", u = p.unit or "", d = p.description or "",
+                di = p.deviceId, ot = p.objectType, oi = p.objectInstance }
+        end
     end
     local cursor = uci.cursor()
     local controller = cursor:get("gk_bacnet_mqtt", "main", "controller_id") or ""
-    return self:ResponseOK({ schemaVersion = 1, controllerId = controller,
+    return self:ResponseOK({ schemaVersion = 2, controllerId = controller,
         exportedAt = os.date("!%Y-%m-%dT%H:%M:%SZ"), points = points })
 end
 

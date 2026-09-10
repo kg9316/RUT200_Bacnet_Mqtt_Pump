@@ -16,6 +16,13 @@ time_t unix_time_now(void)
     return time(NULL);
 }
 
+uint64_t unix_time_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+}
+
 void safe_copy(char *dst, size_t n, const char *src)
 {
     if (!dst || !n)

@@ -33,6 +33,7 @@
 typedef enum {
     VALUE_NONE = 0,
     VALUE_NUMBER,
+    VALUE_ENUM,
     VALUE_BOOL,
     VALUE_STRING
 } VALUE_KIND;
@@ -109,6 +110,7 @@ extern bool g_enabled;
 
 uint64_t monotonic_ms(void);
 time_t unix_time_now(void);
+uint64_t unix_time_ms(void);
 void safe_copy(char *dst, size_t n, const char *src);
 void topic_sanitize(char *s);
 bool double_changed(double a, double b);

@@ -41,13 +41,15 @@ void status_write_now(void)
 
     fprintf(f,
             "{\"running\":true,\"mqttConnected\":%s,\"devices\":%lu,\"points\":%lu,"
-            "\"mqttHost\":\"%s\",\"mqttPort\":%d,\"topicRoot\":\"%s\","
+            "\"mqttHost\":\"%s\",\"mqttPort\":%d,\"mqttTls\":%s,\"mqttMode\":\"%s\",\"topicRoot\":\"%s\","
             "\"pollMs\":%u,\"discoveryMs\":%u,\"maxAgeSec\":%u,\"timestamp\":%lld}\n",
             mqtt_client_is_connected() ? "true" : "false",
             (unsigned long)devices,
             (unsigned long)points,
             g_mqtt_host,
             g_mqtt_port,
+            g_mqtt_settings.tls ? "true" : "false",
+            g_mqtt_settings.gk_cloud ? "gk_cloud" : "generic",
             g_topic_root,
             g_poll_ms,
             g_discovery_ms,

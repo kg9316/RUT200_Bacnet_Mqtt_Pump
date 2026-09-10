@@ -34,19 +34,13 @@ The daemon performs BACnet/IP discovery, object enumeration, metadata reads, Pre
 
 ## Runtime packages
 
-The build produces three GK packages:
-
-```text
-gk-bacnet-mqtt
-vuci-app-gk-bacnet-mqtt-api
-vuci-app-gk-bacnet-mqtt-ui
-```
-
-The UI package depends on the API package and core daemon. The API package depends on the core daemon.
+The repository contains core, API and UI package definitions. The current Fast
+Build ships a single `vuci-app-gk-bacnet-mqtt-ui` runtime package containing the
+daemon, configuration, API and UI, inside `gk_bacnet_mqtt.tar.gz`.
 
 The core daemon links bacnet-stack 1.3.8 statically (fetched and compiled by
 CI, `BACDL_BIP` with `BBMD_ENABLED=0`) rather than depending on Teltonika's
-proprietary `lib-bacnet`/`libbacnet.so`. Its only runtime library dependencies
+proprietary `lib-bacnet`/`libbacnet.so`. Its MQTT/TLS/configuration runtime dependencies
 are:
 
 ```text
@@ -115,6 +109,10 @@ config gateway 'main'
 
 ## GitHub Actions
 
+The GK Cloud/TLS change moves both caches to `v2`. Prepare workflows 1 and 2
+once before the first build of this version. Workflow 0 includes MQTT regression tests.
+
+
 The old monolithic full-validation/cache workflow has been removed. RUT2M CI is deliberately split into independent stages so a late VuCI failure cannot force the expensive SDK/toolchain build to run again.
 
 Run the workflows in this order:
@@ -147,7 +145,7 @@ This is the expensive and rarely-run stage. It prepares the RUT2M SDK, tools, to
 Base cache:
 
 ```text
-gk-sdk-base-RUT2M-00.07.24.2-v1-<runner-os>
+gk-sdk-base-RUT2M-00.07.24.2-v2-<runner-os>
 ```
 
 Once this cache exists, a later VuCI failure does not require another tools/toolchain build.
@@ -161,7 +159,7 @@ Restores the exact base cache, registers/selects the GK packages and prebuilds `
 VuCI cache:
 
 ```text
-gk-sdk-vuci-RUT2M-00.07.24.2-v1-<runner-os>
+gk-sdk-vuci-RUT2M-00.07.24.2-v2-<runner-os>
 ```
 
 If this stage fails, fix/retry this stage only. The expensive base cache remains available.
@@ -170,30 +168,20 @@ If this stage fails, fix/retry this stage only. The expensive base cache remains
 
 File: `.github/workflows/build-gk-fast.yml`
 
-Fast Build requires an exact VuCI cache hit. It refreshes only GK-owned source/package files and builds only:
+Fast Build requires an exact VuCI cache hit. It cross-compiles the daemon,
+injects the runtime and API into the UI package, and builds only
+`package/vuci-app-gk-bacnet-mqtt-ui/compile` before producing the standalone IPK
+and Teltonika Package Manager bundle `gk_bacnet_mqtt.tar.gz`.
 
-```text
-package/gk-bacnet-mqtt/compile
-package/vuci-app-gk-bacnet-mqtt-api/compile
-package/vuci-app-gk-bacnet-mqtt-ui/compile
-```
-
-Fast Build must not run `tools/install`, `toolchain/install`, feed refresh, `make defconfig`, `rm -rf tmp`, package clean operations or `vuci-ui-core/compile`.
-
-A successful Fast Build creates the three `.ipk` packages plus the Teltonika Package Manager bundle `gk_bacnet_mqtt.tar.gz`.
+Fast Build must not rebuild the toolchain or VuCI core, refresh feeds, reset
+metadata or run `make defconfig`. New dependencies must first be prepared in
+the SDK cache workflows.
 
 ## Installation
 
-Install the core, API and UI packages together. Their declared dependencies allow `opkg`/RutOS Package Manager to resolve ordering and RutOS libraries.
-
-```sh
-opkg install /tmp/gk-bacnet-mqtt_*.ipk \
-             /tmp/vuci-app-gk-bacnet-mqtt-api_*.ipk \
-             /tmp/vuci-app-gk-bacnet-mqtt-ui_*.ipk
-
-/etc/init.d/gk-bacnet-mqtt enable
-/etc/init.d/gk-bacnet-mqtt start
-```
+Install `gk_bacnet_mqtt.tar.gz` through RutOS Package Manager. Select `gk_cloud`
+in the gateway settings, enter controller ID and license, then Save & Apply.
+For a generic broker, keep `generic` and configure its host, port and TLS settings.
 
 ## Still to validate on hardware
 

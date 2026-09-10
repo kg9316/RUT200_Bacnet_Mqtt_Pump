@@ -4,11 +4,11 @@ APP_TITLE:=GK BACnet MQTT
 APP_NAME:=$(notdir ${CURDIR})
 # This VuCI app is the single physical runtime package. Keep the package name
 # as vuci-app-...-ui so Teltonika Package Manager treats it as a native VuCI app.
-APP_DEPENDS:=+libmosquitto-ssl +libatomic +api-core
+APP_DEPENDS:=+libmosquitto-ssl +libatomic +api-core +libcurl +libjson-c +libuci +ca-bundle
 CLOSED_GPL_INSTALL:=y
 
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=39
+PKG_RELEASE:=40
 
 ifneq (,$(filter m,$(CONFIG_PACKAGE_$(APP_NAME)))$(DUMP))
 	APP_TLT_NAME:=GK BACnet MQTT
@@ -27,6 +27,7 @@ endef
 # the SDK package graph this Makefile normally feeds.
 define Package/$(APP_NAME)/conffiles
 /etc/config/gk_bacnet_mqtt
+/etc/gk-bacnet-mqtt/tags.json
 endef
 
 include ../app.mk

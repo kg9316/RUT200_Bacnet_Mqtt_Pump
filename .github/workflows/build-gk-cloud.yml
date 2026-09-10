@@ -1,0 +1,28 @@
+name: Build GK Cloud TLS package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-gk-cloud.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gk-rut2m-full-build
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    uses: ./.github/workflows/validate-gk-workflows.yml
+  sdk:
+    needs: validate
+    uses: ./.github/workflows/prepare-sdk-base.yml
+  vuci:
+    needs: sdk
+    uses: ./.github/workflows/prepare-vuci-cache.yml
+  package:
+    needs: vuci
+    uses: ./.github/workflows/build-gk-fast.yml

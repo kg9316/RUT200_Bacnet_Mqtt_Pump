@@ -2,6 +2,7 @@ name: 2 - Prepare RUT2M VuCI Cache
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -13,8 +14,8 @@ jobs:
     timeout-minutes: 45
 
     env:
-      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v1
-      VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v1
+      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v2
+      VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v2
 
     steps:
       - uses: actions/checkout@v4

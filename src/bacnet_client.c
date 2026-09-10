@@ -95,8 +95,14 @@ static bool application_value_to_point_value(BACNET_APPLICATION_DATA_VALUE *valu
             point->numeric_value = (double)value->type.Signed_Int;
             return true;
         case BACNET_APPLICATION_TAG_ENUMERATED:
-            point->value_kind = VALUE_NUMBER;
+            point->value_kind = VALUE_ENUM;
             point->numeric_value = (double)value->type.Enumerated;
+            if (point->object_type == OBJECT_BINARY_INPUT ||
+                point->object_type == OBJECT_BINARY_OUTPUT ||
+                point->object_type == OBJECT_BINARY_VALUE) {
+                point->value_kind = VALUE_BOOL;
+                point->bool_value = value->type.Enumerated != 0;
+            }
             return true;
         case BACNET_APPLICATION_TAG_BOOLEAN:
             point->value_kind = VALUE_BOOL;

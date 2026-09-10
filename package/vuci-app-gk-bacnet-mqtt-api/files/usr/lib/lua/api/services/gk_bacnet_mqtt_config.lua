@@ -1,79 +1,83 @@
 local FunctionService = require("api/FunctionService")
 local uci = require("uci")
-
--- Rewritten from ConfigService: PUT reliably reported success and echoed
--- back the correct new values while never touching /etc/config,
--- /tmp/.uci, or /tmp/.uci-vuci at any level. Root cause is inside
--- Teltonika's compiled ConfigService/put_logic.lua, which we can't read
--- beyond string constants. FunctionService (same base BasicService's
--- GET_TYPE_%s/PUT_TYPE_%s dispatch our working status/interfaces/log
--- handlers already use) plus a direct uci cursor sidesteps that layer
--- entirely - same approach as any plain OpenWrt Lua UCI script.
-
 local Service = FunctionService:new()
-
 local OPTIONS = {
-	"enabled", "bacnet_interface", "mqtt_host", "mqtt_port",
-	"topic_root", "poll_ms", "discovery_ms", "max_age_sec",
+    "enabled", "bacnet_interface", "mqtt_host", "mqtt_port", "topic_root",
+    "poll_ms", "discovery_ms", "max_age_sec", "mqtt_mode", "mqtt_tls",
+    "mqtt_ca_file", "mqtt_cert_file", "mqtt_key_file", "controller_id",
 }
 
+local function public_config(values)
+    local data = {}
+    for _, key in ipairs(OPTIONS) do data[key] = values[key] end
+    data.controller_license_configured = (values.controller_license or "") ~= ""
+    return data
+end
+
 function Service:GET_TYPE_config()
-	local cursor = uci.cursor()
-	local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
-	local data = {}
-	for _, opt in ipairs(OPTIONS) do
-		data[opt] = values[opt]
-	end
-	return self:ResponseOK(data)
+    local cursor = uci.cursor()
+    return self:ResponseOK(public_config(cursor:get_all("gk_bacnet_mqtt", "main") or {}))
+end
+
+local function validate(values)
+    local mode = values.mqtt_mode or "generic"
+    if mode ~= "generic" and mode ~= "gk_cloud" then return "Invalid MQTT mode" end
+    for _, key in ipairs({"enabled", "mqtt_tls"}) do
+        if values[key] ~= nil and values[key] ~= "0" and values[key] ~= "1" then
+            return "Invalid switch value"
+        end
+    end
+    for key, limits in pairs({mqtt_port={1,65535}, poll_ms={100,3600000}, discovery_ms={100,3600000}, max_age_sec={1,86400}}) do
+        local n = tonumber(values[key])
+        if not n or n % 1 ~= 0 or n < limits[1] or n > limits[2] then return "Invalid " .. key end
+    end
+    for _, key in ipairs({"mqtt_ca_file", "mqtt_cert_file", "mqtt_key_file"}) do
+        local value = values[key] or ""
+        if #value > 255 or (value ~= "" and value:sub(1,1) ~= "/") or value:find("[%c]") then
+            return "Certificate paths must be absolute and at most 255 bytes"
+        end
+    end
+    if ((values.mqtt_cert_file or "") == "") ~= ((values.mqtt_key_file or "") == "") then
+        return "Specify both client certificate and private key, or neither"
+    end
+    if #(values.mqtt_host or "") > 127 or #(values.topic_root or "") > 127 or #(values.bacnet_interface or "") > 63 then
+        return "Configuration value too long"
+    end
+    if #(values.controller_id or "") > 127 or #(values.controller_license or "") > 8191 then return "Credentials too long" end
+    if mode == "gk_cloud" then
+        if not (values.controller_id or ""):match("^[%w_%-]+$") then return "Controller ID is required and must be a topic-safe ID" end
+        if (values.controller_license or "") == "" then return "Controller license is required" end
+    end
 end
 
 local function do_put(self)
-	-- The dispatcher sets self.arguments directly rather than passing the
-	-- parsed body as a function parameter; the submitted fields are one
-	-- level further in, under .data (matching the frontend's
-	-- {data: config} body).
-	local body = self.arguments and self.arguments.data
-	if type(body) ~= "table" then
-		return self:ResponseError("No data in request")
-	end
-
-	local cursor = uci.cursor()
-	for _, opt in ipairs(OPTIONS) do
-		if body[opt] ~= nil then
-			cursor:set("gk_bacnet_mqtt", "main", opt, tostring(body[opt]))
-		end
-	end
-	cursor:save("gk_bacnet_mqtt")
-	cursor:commit("gk_bacnet_mqtt")
-
-	-- No service restart is triggered here on purpose: this handler runs
-	-- as uhttpd, not root, and procd's ubus "service" object refuses
-	-- delete/set calls from any non-root caller ("Permission denied"), and
-	-- end users only ever have UI access (no SSH) - so there's no
-	-- sanctioned way for a Package Manager-installed VuCI app to restart
-	-- its own daemon from here at all. Instead the daemon itself polls
-	-- this same UCI file's mtime and live-reloads every option in-process
-	-- within a couple of seconds, including bacnet_interface (rebinds the
-	-- datalink socket) and enabled (pauses/resumes the BACnet loop) -
-	-- see config_reload.c. No restart is ever required from the UI.
-
-	local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
-	local data = {}
-	for _, opt in ipairs(OPTIONS) do
-		data[opt] = values[opt]
-	end
-	return self:ResponseOK(data)
+    local body = self.arguments and self.arguments.data
+    if type(body) ~= "table" then return self:ResponseError("No data in request") end
+    local cursor = uci.cursor()
+    local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
+    for _, key in ipairs(OPTIONS) do
+        if body[key] ~= nil then
+            if type(body[key]) ~= "string" then return self:ResponseError("Expected string settings") end
+            values[key] = body[key]
+        end
+    end
+    -- An empty password input preserves the saved license. Never send it back.
+    if body.controller_license ~= nil then
+        if type(body.controller_license) ~= "string" then return self:ResponseError("Invalid license") end
+        if body.controller_license ~= "" then values.controller_license = body.controller_license end
+    end
+    local error = validate(values)
+    if error then return self:ResponseError(error) end
+    for _, key in ipairs(OPTIONS) do
+        if values[key] ~= nil then cursor:set("gk_bacnet_mqtt", "main", key, values[key]) end
+    end
+    if values.controller_license then cursor:set("gk_bacnet_mqtt", "main", "controller_license", values.controller_license) end
+    if not cursor:save("gk_bacnet_mqtt") or not cursor:commit("gk_bacnet_mqtt") then
+        return self:ResponseError("Unable to save configuration")
+    end
+    return self:ResponseOK(public_config(values))
 end
 
--- PUT_TYPE_config (mirroring the confirmed-working GET_TYPE_%s
--- convention) got "PUT not implemented" back. Turns out put_logic.lua/
--- get_logic.lua/post_logic.lua in Teltonika's own api-core source are
--- ConfigService-only internals (full of section/.type-specific
--- concepts) - FunctionService never requires them, so it likely has no
--- PUT dispatch at all, only GET (the simple TYPE convention we already
--- use) and POST (an "action" mechanism per its own string constants).
--- Switch to POST, and again register several plausible names against
--- the same handler rather than guess one at a time.
 Service.POST_TYPE_config = do_put
 Service.POST_config = do_put
 Service.POST_TYPE_general = do_put
@@ -81,5 +85,4 @@ Service.POST_general = do_put
 Service.POST = do_put
 Service.POST_TYPE = do_put
 Service.PUT_TYPE_config = do_put
-
 return Service

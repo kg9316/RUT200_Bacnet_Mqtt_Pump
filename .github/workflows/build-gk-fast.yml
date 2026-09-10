@@ -2,6 +2,7 @@ name: 3 - Fast Build GK BACnet MQTT IPK - RUT2M
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -12,7 +13,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     env:
-      VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v1
+      VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v2
     steps:
       - uses: actions/checkout@v4
       - name: Resolve shipped package version
@@ -77,11 +78,11 @@ jobs:
           done
           "$AR" rcs "$BACOBJ/libbacnet.a" "$BACOBJ"/*.o
 
-          "$CC" -Os --sysroot="$SYSROOT" -I"$GITHUB_WORKSPACE/src" $BACINC -I"$MOSQDIR/include" \
-            "$GITHUB_WORKSPACE/src/main.c" "$GITHUB_WORKSPACE/src/util.c" "$GITHUB_WORKSPACE/src/device_table.c" "$GITHUB_WORKSPACE/src/mqtt_client.c" "$GITHUB_WORKSPACE/src/bacnet_client.c" "$GITHUB_WORKSPACE/src/status.c" "$GITHUB_WORKSPACE/src/config_reload.c" \
+          "$CC" -Os --sysroot="$SYSROOT" -I"$GITHUB_WORKSPACE/src" -I"$SYSROOT/usr/include" -I"$SDK/staging_dir/usr/include" $BACINC -I"$MOSQDIR/include" \
+            "$GITHUB_WORKSPACE/src/main.c" "$GITHUB_WORKSPACE/src/util.c" "$GITHUB_WORKSPACE/src/device_table.c" "$GITHUB_WORKSPACE/src/mqtt_client.c" "$GITHUB_WORKSPACE/src/bacnet_client.c" "$GITHUB_WORKSPACE/src/status.c" "$GITHUB_WORKSPACE/src/config_reload.c" "$GITHUB_WORKSPACE/src/gk_cloud.c" "$GITHUB_WORKSPACE/src/tag_registry.c" \
             -L"$BACOBJ" -lbacnet "$MOSQDIR/lib/libmosquitto.so.1" \
             -L"$SDK/staging_dir/usr/lib" -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$SDK/staging_dir/usr/lib" \
-            -pthread -lrt -lm -latomic -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
+            -L"$SYSROOT/usr/lib" -lcurl -ljson-c -luci -pthread -lrt -lm -latomic -o "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           "$STRIP" "$GITHUB_WORKSPACE/gk-bacnet-mqtt"
           file "$GITHUB_WORKSPACE/gk-bacnet-mqtt" | grep -qi ELF
       - name: Inject runtime without changing cached package graph
@@ -92,6 +93,8 @@ jobs:
           cp gk-bacnet-mqtt "$CORE/files/gk-bacnet-mqtt"
           rsync -a --delete --exclude Makefile package/vuci-app-gk-bacnet-mqtt-ui/ "$UI/"
           mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d" "$UI/files/usr/lib/lua/api/services" "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d"
+          mkdir -p "$UI/files/etc/gk-bacnet-mqtt"
+          cp package/gk-bacnet-mqtt/files/tags.json "$UI/files/etc/gk-bacnet-mqtt/tags.json"
           cp gk-bacnet-mqtt "$UI/files/usr/sbin/gk-bacnet-mqtt"; chmod 0755 "$UI/files/usr/sbin/gk-bacnet-mqtt"
           cp package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.config "$UI/files/etc/config/gk_bacnet_mqtt"
           cp package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.init "$UI/files/etc/init.d/gk-bacnet-mqtt"; chmod 0755 "$UI/files/etc/init.d/gk-bacnet-mqtt"
@@ -128,12 +131,11 @@ jobs:
           ver = os.environ['PKG_VER']
           for line in lines:
               if line.startswith('Version:'): line='Version: ' + ver
-              elif line.startswith('Depends:'): line='Depends: libc, libmosquitto-ssl, libatomic1, api-core, vuci-ui-core'
               elif line.startswith('Description:'): line='Description:  GK BACnet to MQTT gateway. Single RutOS package containing daemon, UCI config, API and VuCI UI.'
               out.append(line)
           open(p,'w').write('\n'.join(out)+'\n')
           PY
-          printf '/etc/config/gk_bacnet_mqtt\n' > "$TMP/control/conffiles"
+          printf '/etc/config/gk_bacnet_mqtt\n/etc/gk-bacnet-mqtt/tags.json\n' > "$TMP/control/conffiles"
           # The config API's Lua handler runs as the uhttpd user (uid/gid
           # uhttpd), not root, so it calls uci.cursor():commit() with no
           # write access to a root:root 0644 file - commit() silently fails
@@ -167,7 +169,11 @@ jobs:
           test -f "$NEW_IPK"
           cat "$TMP/control/control"
           grep -q "^Version: ${PKG_VER}\$" "$TMP/control/control"
-          grep -q '^Depends: libc, libmosquitto-ssl, libatomic1, api-core, vuci-ui-core$' "$TMP/control/control"
+          for dep in libmosquitto-ssl libcurl libjson-c libuci ca-bundle; do
+            grep '^Depends:' "$TMP/control/control" | grep -q "$dep"
+          done
+          grep -q '^/etc/gk-bacnet-mqtt/tags.json$' "$TMP/control/conffiles"
+          test -f "$TMP/data/etc/gk-bacnet-mqtt/tags.json"
           grep -q '^/etc/config/gk_bacnet_mqtt$' "$TMP/control/conffiles"
           grep -q 'chgrp uhttpd /etc/config/gk_bacnet_mqtt' "$TMP/control/postinst"
           grep -q 'chmod 0660 /etc/config/gk_bacnet_mqtt' "$TMP/control/postinst"

@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gk-bacnet-mqtt
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=14
+PKG_RELEASE:=15
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -10,7 +10,7 @@ define Package/gk-bacnet-mqtt
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=GK BACnet to MQTT Gateway
-  DEPENDS:=+libmosquitto-ssl +libatomic +api-core
+  DEPENDS:=+libmosquitto-ssl +libatomic +api-core +libcurl +libjson-c +libuci +ca-bundle
 endef
 
 define Package/gk-bacnet-mqtt/description
@@ -23,9 +23,16 @@ endef
 define Build/Compile
 endef
 
+define Package/gk-bacnet-mqtt/conffiles
+/etc/config/gk_bacnet_mqtt
+/etc/gk-bacnet-mqtt/tags.json
+endef
+
 define Package/gk-bacnet-mqtt/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/gk-bacnet-mqtt $(1)/usr/sbin/gk-bacnet-mqtt
+	$(INSTALL_DIR) $(1)/etc/gk-bacnet-mqtt
+	$(INSTALL_CONF) ./files/tags.json $(1)/etc/gk-bacnet-mqtt/tags.json
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/gk-bacnet-mqtt.config $(1)/etc/config/gk_bacnet_mqtt
 	$(INSTALL_DIR) $(1)/etc/init.d
@@ -59,6 +66,8 @@ define Package/gk-bacnet-mqtt/postinst
 #!/bin/sh
 ROOT="$${IPKG_INSTROOT:-}"
 if [ -z "$$ROOT" ] || [ "$$ROOT" = "/usr/local" ]; then
+	chgrp uhttpd /etc/config/gk_bacnet_mqtt 2>/dev/null || true
+	chmod 0660 /etc/config/gk_bacnet_mqtt 2>/dev/null || true
 	/etc/init.d/rpcd restart >/dev/null 2>&1 || true
 fi
 exit 0

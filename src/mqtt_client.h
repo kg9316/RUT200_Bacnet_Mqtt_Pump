@@ -3,6 +3,19 @@
 
 #include "gateway.h"
 
+#define MQTT_CA_BUNDLE "/etc/ssl/certs/ca-certificates.crt"
+typedef struct {
+    bool tls;
+    bool gk_cloud;
+    char ca_file[256];
+    char cert_file[256];
+    char key_file[256];
+    char controller_id[128];
+    char license[8192];
+} MQTT_SETTINGS;
+
+extern MQTT_SETTINGS g_mqtt_settings;
+
 int mqtt_client_init(void);
 void mqtt_client_cleanup(void);
 void mqtt_client_loop(void);

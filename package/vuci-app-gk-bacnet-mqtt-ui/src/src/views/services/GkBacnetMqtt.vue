@@ -27,10 +27,18 @@
         <tlt-switch v-else-if="field.type === 'switch'" :id="'gk-cfg-' + field.key"
                     :model-value="config[field.key] === '1'"
                     @update:model-value="config[field.key] = $event ? '1' : '0'" />
-        <input v-else :id="'gk-cfg-' + field.key" type="text" v-model="config[field.key]"
+        <input v-else :id="'gk-cfg-' + field.key" :type="field.type === 'password' ? 'password' : 'text'" v-model="config[field.key]"
+               :autocomplete="field.type === 'password' ? 'new-password' : 'off'"
                style="min-width:200px;padding:8px 10px;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:transparent;color:inherit;" />
       </div>
 
+      <p v-if="config.mqtt_mode === 'gk_cloud'" style="font-size:13px;">
+        {{ $t('GK Cloud uses edge-broker.gkcloud.no:8883 with verified TLS and automatic token renewal. Tag GUIDs are saved on this router. MQTT messages contain values only, without name, description or unit.') }}
+        {{ config.controller_license_configured ? $t('A license is saved. Leave the license field empty to keep it.') : $t('Enter your controller ID and license.') }}
+      </p>
+      <p v-else-if="config.mqtt_tls === '1'" style="font-size:13px;">
+        {{ $t('Set the broker TLS port (usually 8883). An empty CA path uses the system CA bundle. Client certificate and key are optional paths to PEM files on the router.') }}
+      </p>
       <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
         <tlt-button @click="saveConfig">{{ $t('Save & Apply') }}</tlt-button>
         <span v-if="saveMessage" :style="{color: saveError ? '#c44747' : '#2e9b57', fontSize: '13px'}">{{ saveMessage }}</span>
@@ -68,6 +76,14 @@ export default {
         bacnet_interface: '',
         mqtt_host: '',
         mqtt_port: '',
+        mqtt_mode: 'generic',
+        mqtt_tls: '0',
+        mqtt_ca_file: '/etc/ssl/certs/ca-certificates.crt',
+        mqtt_cert_file: '',
+        mqtt_key_file: '',
+        controller_id: '',
+        controller_license: '',
+        controller_license_configured: false,
         topic_root: '',
         poll_ms: '',
         discovery_ms: '',
@@ -85,6 +101,7 @@ export default {
         { label: this.$t('BACnet devices'), value: this.status.devices },
         { label: this.$t('BACnet points'), value: this.status.points },
         { label: this.$t('MQTT broker'), value: `${this.status.mqttHost || '-'}:${this.status.mqttPort || '-'}` },
+        { label: this.$t('MQTT TLS'), value: this.status.mqttTls ? this.$t('Enabled') : this.$t('Disabled') },
         { label: this.$t('Topic root'), value: this.status.topicRoot || '-' },
       ];
     },
@@ -92,13 +109,27 @@ export default {
       return [
         { key: 'enabled', label: this.$t('Enabled'), type: 'switch' },
         { key: 'bacnet_interface', label: this.$t('BACnet interface'), type: 'select', options: this.interfaces },
+        { key: 'mqtt_mode', label: this.$t('MQTT mode'), type: 'select', options: ['generic', 'gk_cloud'] },
         { key: 'mqtt_host', label: this.$t('MQTT host'), type: 'text' },
         { key: 'mqtt_port', label: this.$t('MQTT port'), type: 'text' },
+        { key: 'mqtt_tls', label: this.$t('MQTT TLS'), type: 'switch' },
+        { key: 'mqtt_ca_file', label: this.$t('CA certificate file'), type: 'text' },
+        { key: 'mqtt_cert_file', label: this.$t('Client certificate file'), type: 'text' },
+        { key: 'mqtt_key_file', label: this.$t('Client private key file'), type: 'text' },
+        { key: 'controller_id', label: this.$t('Controller ID'), type: 'text' },
+        { key: 'controller_license', label: this.$t('Controller license'), type: 'password' },
         { key: 'topic_root', label: this.$t('Topic root'), type: 'text' },
         { key: 'poll_ms', label: this.$t('Poll interval (ms)'), type: 'text' },
         { key: 'discovery_ms', label: this.$t('Discovery interval (ms)'), type: 'text' },
         { key: 'max_age_sec', label: this.$t('Maximum publish age (s)'), type: 'text' },
-      ];
+      ].filter((field) => {
+        const cloud = this.config.mqtt_mode === 'gk_cloud';
+        if (['controller_id', 'controller_license'].includes(field.key)) return cloud;
+        if (['mqtt_host', 'mqtt_port', 'mqtt_tls', 'topic_root'].includes(field.key)) return !cloud;
+        if (['mqtt_cert_file', 'mqtt_key_file'].includes(field.key)) return !cloud && this.config.mqtt_tls === '1';
+        if (field.key === 'mqtt_ca_file') return cloud || this.config.mqtt_tls === '1';
+        return true;
+      });
     },
   },
   mounted() {
@@ -175,9 +206,11 @@ export default {
       this.saveMessage = '';
       try {
         const response = await this.$axios.post('/api/gk_bacnet_mqtt/config/config', { data: this.config });
-        const data = this.findPayload(response, ['mqtt_host', 'enabled']) || {};
+        const data = this.findPayload(response, ['mqtt_host', 'enabled']);
+        if (!data) throw new Error('Invalid configuration response');
         this.config = Object.assign({}, this.config, data);
         this.saveError = false;
+        this.config.controller_license = '';
         this.saveMessage = this.$t('Configuration has been applied');
       } catch (error) {
         this.saveError = true;

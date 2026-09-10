@@ -2,6 +2,7 @@ name: 1 - Prepare RUT2M SDK Base Cache
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -15,12 +16,21 @@ jobs:
     env:
       SDK_URL: https://firmware.teltonika-networks.com/7.24.2/RUT2M/RUT2M_R_GPL_00.07.24.2.tar.gz
       SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.2.tar.gz
-      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v1
+      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v2
 
     steps:
       - uses: actions/checkout@v4
+      - name: Restore prepared base or previous compatible SDK
+        id: sdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: sdk
+          key: ${{ env.BASE_CACHE_KEY }}-${{ runner.os }}
+          restore-keys: |
+            gk-sdk-base-RUT2M-00.07.24.2-v1-${{ runner.os }}
 
       - name: Install SDK prerequisites
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -35,6 +45,7 @@ jobs:
             vim-common wget zip zlib1g-dev gcc-multilib g++-multilib
 
       - name: Download exact RUT2M GPL SDK
+        if: steps.sdk-cache.outputs.cache-matched-key == ''
         run: |
           set -euo pipefail
           rm -rf sdk
@@ -45,19 +56,30 @@ jobs:
           test -x sdk/scripts/feeds
 
       - name: Refresh feeds metadata
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         working-directory: sdk
         run: |
           set -euo pipefail
-          ./scripts/feeds update -a
+          if [ -z "${{ steps.sdk-cache.outputs.cache-matched-key }}" ]; then
+            ./scripts/feeds update -a
+          fi
+          for sym in CONFIG_PACKAGE_libcurl CONFIG_PACKAGE_libjson-c CONFIG_PACKAGE_libuci CONFIG_PACKAGE_ca-bundle CONFIG_LIBCURL_OPENSSL CONFIG_LIBCURL_THREADED_RESOLVER; do
+            sed -i "/^${sym}=/d;/^# ${sym} is not set$/d" .config
+            echo "${sym}=y" >> .config
+          done
           make defconfig
 
       - name: Build expensive base prerequisites
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         working-directory: sdk
         run: |
           set -euo pipefail
-          make tools/install -j2
-          make toolchain/install -j2
+          if [ -z "${{ steps.sdk-cache.outputs.cache-matched-key }}" ]; then
+            make tools/install -j2
+            make toolchain/install -j2
+          fi
           make package/mosquitto/compile -j2
+          make package/curl/compile package/json-c/compile package/uci/compile package/ca-certificates/compile -j2 V=s
 
       - name: Verify base before saving
         run: |
@@ -73,6 +95,7 @@ jobs:
           echo "BASE READY: ${BASE_CACHE_KEY}-${{ runner.os }}"
 
       - name: Save SDK base cache
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: sdk

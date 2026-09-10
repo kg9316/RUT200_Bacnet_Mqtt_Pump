@@ -40,6 +40,7 @@ int main(int argc, char **argv)
     signal(SIGTERM, signal_handler);
 
     LOG_OPEN();
+    config_reload_init();
     LOG_INFOF("starting BACnet=%s MQTT=%s:%d root=%s poll=%ums discovery=%ums maxAge=%us",
               g_bacnet_interface,
               g_mqtt_host,
@@ -69,7 +70,6 @@ int main(int argc, char **argv)
     }
 
     status_write_now();
-    config_reload_init();
 
     while (g_running) {
         mqtt_client_loop();

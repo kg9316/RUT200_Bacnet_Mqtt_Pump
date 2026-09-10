@@ -44,4 +44,11 @@ function Service:GET_TYPE_log()
 	return self:ResponseOK({ log = log })
 end
 
+function Service:GET_TYPE_mqtt_log()
+	local p = io.popen("logread -e gk-bacnet-mqtt 2>/dev/null | grep -E 'MQTT|GK ' | tail -n 200")
+	local log = ""
+	if p then log = p:read("*a") or ""; p:close() end
+	return self:ResponseOK({ log = log })
+end
+
 return Service

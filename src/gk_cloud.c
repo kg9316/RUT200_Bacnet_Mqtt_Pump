@@ -21,6 +21,8 @@ static size_t response_size;
 static char token[16384];
 static uint64_t expires_ms, refresh_ms, retry_ms, request_started_ms;
 static unsigned generation;
+static char last_error[192];
+const char *gk_cloud_last_error(void) { return last_error; }
 
 static void finish_request(void)
 {
@@ -46,6 +48,7 @@ void gk_cloud_reset(void)
     finish_request();
     memset(token, 0, sizeof(token));
     expires_ms = refresh_ms = retry_ms = 0;
+    last_error[0] = 0;
 }
 
 void gk_cloud_cleanup(void)
@@ -161,12 +164,21 @@ void gk_cloud_loop(void)
     if (!multi || !g_mqtt_settings.gk_cloud) return;
     if (!request && now >= refresh_ms && now >= retry_ms) {
         retry_ms = now + 30000;
-        if (!g_mqtt_settings.controller_id[0] || !g_mqtt_settings.license[0]) return;
+        if (!g_mqtt_settings.controller_id[0] || !g_mqtt_settings.license[0]) {
+            safe_copy(last_error, sizeof(last_error), "GK controller ID or license is missing");
+            LOG_WARNF("%s", last_error);
+            return;
+        }
         request_started_ms = now;
-        if (start_request()) LOG_ERRORF("GK token request could not be started");
+        if (start_request()) {
+            safe_copy(last_error, sizeof(last_error), "GK token request could not be started");
+            LOG_ERRORF("%s", last_error);
+        }
     }
     if (!request) return;
     if (curl_multi_perform(multi, &active) != CURLM_OK) {
+        safe_copy(last_error, sizeof(last_error), "GK token transport processing failed");
+        LOG_WARNF("%s", last_error);
         finish_request();
         retry_ms = now + 30000;
         return;
@@ -175,10 +187,14 @@ void gk_cloud_loop(void)
         if (message->msg == CURLMSG_DONE && message->easy_handle == request) {
             long status = 0;
             curl_easy_getinfo(request, CURLINFO_RESPONSE_CODE, &status);
-            if (message->data.result == CURLE_OK && status == 200 && accept_token())
+            if (message->data.result == CURLE_OK && status == 200 && accept_token()) {
+                last_error[0] = 0;
                 LOG_INFOF("GK access token renewed");
-            else
-                LOG_WARNF("GK token request failed (HTTP %ld, transport %d)", status, message->data.result);
+            } else {
+                snprintf(last_error, sizeof(last_error), "GK token failed: HTTP %ld, %s (transport %d)",
+                    status, message->data.result == CURLE_OK ? "invalid or rejected response" : curl_easy_strerror(message->data.result), message->data.result);
+                LOG_WARNF("%s", last_error);
+            }
             finish_request();
             retry_ms = now + 30000;
             break;

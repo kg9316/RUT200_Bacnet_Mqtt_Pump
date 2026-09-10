@@ -93,6 +93,15 @@ static bool persist(void)
     return fd == 0;
 }
 
+const char *tag_registry_lookup(uint32_t device, unsigned type, uint32_t instance)
+{
+    char key[80];
+    struct json_object *value;
+    if (!registry) return NULL;
+    snprintf(key, sizeof(key), "%lu:%u:%lu", (unsigned long)device, type, (unsigned long)instance);
+    return json_object_object_get_ex(registry, key, &value) ? json_object_get_string(value) : NULL;
+}
+
 const char *tag_registry_get(uint32_t device, unsigned type, uint32_t instance)
 {
     char key[80], id[37];

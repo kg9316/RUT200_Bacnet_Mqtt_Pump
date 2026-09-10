@@ -15,6 +15,12 @@ typedef struct {
 } MQTT_SETTINGS;
 
 extern MQTT_SETTINGS g_mqtt_settings;
+typedef struct {
+    uint64_t queued, sent, failures;
+    time_t last_sent;
+    char error[192];
+} MQTT_DIAGNOSTICS;
+extern MQTT_DIAGNOSTICS g_mqtt_diagnostics;
 
 int mqtt_client_init(void);
 void mqtt_client_cleanup(void);

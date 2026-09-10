@@ -14,6 +14,8 @@ static int tls_failure, tls_calls, connect_calls, destroy_calls;
 static bool check_hostname;
 static char used_id[160], used_user[128], used_password[128];
 static void (*connected_cb)(struct mosquitto *, void *, int);
+static void (*published_cb)(struct mosquitto *, void *, int);
+static int publish_failure;
 uint64_t monotonic_ms(void) { return clock_ms; }
 time_t unix_time_now(void) { return 1788180633; }
 void safe_copy(char *d, size_t n, const char *s) { snprintf(d, n, "%s", s ? s : ""); }
@@ -37,6 +39,8 @@ void mosquitto_destroy(struct mosquitto *m) { destroy_calls++; free(m); }
 int mosquitto_disconnect(struct mosquitto *m) { (void)m; return 0; }
 void mosquitto_connect_callback_set(struct mosquitto *m, void (*cb)(struct mosquitto *,void *,int)) { (void)m; connected_cb=cb; }
 void mosquitto_disconnect_callback_set(struct mosquitto *m, void (*cb)(struct mosquitto *,void *,int)) { (void)m; (void)cb; }
+void mosquitto_publish_callback_set(struct mosquitto *m, void (*cb)(struct mosquitto *,void *,int)) { (void)m; published_cb=cb; }
+const char *mosquitto_connack_string(int rc) { (void)rc; return "test rejection"; }
 int mosquitto_tls_set(struct mosquitto *m,const char *ca,const char *path,const char *cert,const char *key,int (*cb)(char *,int,int,void *))
 { (void)m; (void)path; (void)cert; (void)key; (void)cb; assert(ca && ca[0]); tls_calls++; return tls_failure; }
 int mosquitto_tls_opts_set(struct mosquitto *m,int verify,const char *version,const char *ciphers)
@@ -49,7 +53,7 @@ int mosquitto_connect_async(struct mosquitto *m,const char *host,int port,int ke
 int mosquitto_loop(struct mosquitto *m,int timeout,int packets) { (void)timeout; (void)packets; connected_cb(m,NULL,0); return 0; }
 const char *mosquitto_strerror(int rc) { (void)rc; return "test error"; }
 int mosquitto_publish(struct mosquitto *m,int *mid,const char *topic,int length,const void *payload,int qos,bool retain)
-{ (void)m; (void)mid; (void)topic; (void)length; (void)payload; (void)qos; (void)retain; return 0; }
+{ (void)m; (void)mid; (void)topic; (void)length; (void)payload; (void)qos; (void)retain; return publish_failure; }
 
 int main(void)
 {
@@ -67,6 +71,15 @@ int main(void)
     assert(strcmp(used_user,"controller-test") == 0);
     assert(strcmp(used_password,"first-token") == 0);
     assert(mqtt_client_is_connected());
+    mqtt_publish_raw("test/topic", "{}", false);
+    assert(g_mqtt_diagnostics.queued == 1 && g_mqtt_diagnostics.sent == 0);
+    published_cb(g_mosq, NULL, 1);
+    assert(g_mqtt_diagnostics.sent == 1 && g_mqtt_diagnostics.last_sent == unix_time_now());
+    publish_failure = MOSQ_ERR_NO_CONN;
+    mqtt_publish_raw("test/topic", "{}", false);
+    assert(g_mqtt_diagnostics.queued == 1 && g_mqtt_diagnostics.failures == 1);
+    assert(strstr(g_mqtt_diagnostics.error, "publish failed"));
+    publish_failure = 0;
     test_token = "renewed-token";
     test_generation++;
     mqtt_client_loop();

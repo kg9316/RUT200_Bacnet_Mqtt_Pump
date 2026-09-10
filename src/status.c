@@ -1,69 +1,76 @@
 #include "status.h"
-
 #include "device_table.h"
 #include "gateway.h"
 #include "mqtt_client.h"
-
+#include "gk_cloud.h"
+#include "tag_registry.h"
+#include <json-c/json.h>
+#include <math.h>
 #include <stdio.h>
 #include <unistd.h>
 
+#ifndef STATUS_FILE
 #define STATUS_FILE "/tmp/gk-bacnet-mqtt-status.json"
-
-static uint64_t g_next_status_ms = 0;
-
-static void count_runtime(size_t *devices, size_t *points)
-{
-    size_t i;
-    size_t p = 0;
-
-    for (i = 0; i < MAX_DEVICES; i++) {
-        if (g_devices[i].used)
-            p += g_devices[i].point_count;
-    }
-
-    *devices = device_count();
-    *points = p;
-}
+#endif
+static uint64_t g_next_status_ms;
+#define STR(o,k,v) json_object_object_add(o,k,json_object_new_string((v) ? (v) : ""))
+#define NUM(o,k,v) json_object_object_add(o,k,json_object_new_int64((int64_t)(v)))
+#define BOOL(o,k,v) json_object_object_add(o,k,json_object_new_boolean(v))
 
 void status_write_now(void)
 {
-    char tmp_path[128];
+    char tmp_path[160];
+    size_t i,j,count=0;
+    struct json_object *root=json_object_new_object(), *rows=json_object_new_array();
     FILE *f;
-    size_t devices = 0;
-    size_t points = 0;
-
-    count_runtime(&devices, &points);
-    snprintf(tmp_path, sizeof(tmp_path), "%s.%ld", STATUS_FILE, (long)getpid());
-
-    f = fopen(tmp_path, "w");
-    if (!f)
-        return;
-
-    fprintf(f,
-            "{\"running\":true,\"mqttConnected\":%s,\"devices\":%lu,\"points\":%lu,"
-            "\"mqttHost\":\"%s\",\"mqttPort\":%d,\"mqttTls\":%s,\"mqttMode\":\"%s\",\"topicRoot\":\"%s\","
-            "\"pollMs\":%u,\"discoveryMs\":%u,\"maxAgeSec\":%u,\"timestamp\":%lld}\n",
-            mqtt_client_is_connected() ? "true" : "false",
-            (unsigned long)devices,
-            (unsigned long)points,
-            g_mqtt_host,
-            g_mqtt_port,
-            g_mqtt_settings.tls ? "true" : "false",
-            g_mqtt_settings.gk_cloud ? "gk_cloud" : "generic",
-            g_topic_root,
-            g_poll_ms,
-            g_discovery_ms,
-            g_max_age_sec,
-            (long long)unix_time_now());
-    fclose(f);
-    rename(tmp_path, STATUS_FILE);
+    if (!root || !rows) { if(root) json_object_put(root); if(rows) json_object_put(rows); return; }
+    for(i=0;i<MAX_DEVICES;i++) {
+        DEVICE_STATE *d=&g_devices[i];
+        if(!d->used) continue;
+        for(j=0;j<d->point_count;j++) {
+            POINT_STATE *p=&d->points[j];
+            struct json_object *row=json_object_new_object();
+            const char *tag=tag_registry_lookup(d->device_id,(unsigned)p->object_type,p->object_instance);
+            ++count;
+            STR(row,"tag",tag); STR(row,"name",p->name); STR(row,"unit",p->unit);
+            STR(row,"description",p->description); STR(row,"deviceName",d->name);
+            NUM(row,"deviceId",d->device_id); NUM(row,"objectType",p->object_type);
+            NUM(row,"objectInstance",p->object_instance); BOOL(row,"metadataComplete",p->metadata_complete);
+            NUM(row,"lastQueuedAt",p->last_publish);
+            if(p->have_value) {
+                if(p->value_kind==VALUE_STRING) STR(row,"value",p->string_value);
+                else if(p->value_kind==VALUE_BOOL) BOOL(row,"value",p->bool_value);
+                else if((p->value_kind==VALUE_NUMBER || p->value_kind==VALUE_ENUM) && isfinite(p->numeric_value))
+                    json_object_object_add(row,"value",json_object_new_double(p->numeric_value));
+            }
+            json_object_array_add(rows,row);
+        }
+    }
+    BOOL(root,"running",true); BOOL(root,"mqttConnected",mqtt_client_is_connected());
+    NUM(root,"devices",device_count()); NUM(root,"points",count);
+    STR(root,"mqttHost",g_mqtt_host); NUM(root,"mqttPort",g_mqtt_port);
+    BOOL(root,"mqttTls",g_mqtt_settings.tls); STR(root,"mqttMode",g_mqtt_settings.gk_cloud ? "gk_cloud":"generic");
+    STR(root,"topicRoot",g_topic_root);
+    NUM(root,"pollMs",g_poll_ms); NUM(root,"discoveryMs",g_discovery_ms); NUM(root,"maxAgeSec",g_max_age_sec);
+    NUM(root,"timestamp",unix_time_now());
+    NUM(root,"mqttQueued",g_mqtt_diagnostics.queued); NUM(root,"mqttSent",g_mqtt_diagnostics.sent);
+    NUM(root,"mqttErrors",g_mqtt_diagnostics.failures); NUM(root,"mqttLastSent",g_mqtt_diagnostics.last_sent);
+    STR(root,"mqttLastError",g_mqtt_diagnostics.error);
+    STR(root,"authLastError",g_mqtt_settings.gk_cloud ? gk_cloud_last_error() : "");
+    json_object_object_add(root,"pointDetails",rows);
+    snprintf(tmp_path,sizeof(tmp_path),"%s.%ld",STATUS_FILE,(long)getpid());
+    f=fopen(tmp_path,"w");
+    if(f) {
+        int ok=fputs(json_object_to_json_string_ext(root,JSON_C_TO_STRING_PLAIN),f)>=0;
+        if(fclose(f)!=0) ok=0;
+        if(ok) rename(tmp_path,STATUS_FILE); else unlink(tmp_path);
+    }
+    json_object_put(root);
 }
-
 void status_write_if_due(void)
 {
-    uint64_t now = monotonic_ms();
-    if (now < g_next_status_ms)
-        return;
+    uint64_t now=monotonic_ms();
+    if(now<g_next_status_ms) return;
     status_write_now();
-    g_next_status_ms = now + 1000;
+    g_next_status_ms=now+5000;
 }

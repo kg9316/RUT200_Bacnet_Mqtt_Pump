@@ -3,6 +3,7 @@
 #include "device_table.h"
 #include "gateway.h"
 #include "mqtt_client.h"
+#include "logger.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -20,6 +21,8 @@
 #include "bacnet/basic/tsm/tsm.h"
 
 static uint64_t g_next_discovery_ms = 0;
+static uint64_t next_timeout_log_ms;
+static unsigned timeout_count;
 
 static bool application_value_to_uint32(const BACNET_APPLICATION_DATA_VALUE *value,
                                         uint32_t *out)
@@ -479,10 +482,14 @@ static void scheduler_run(void)
 
     if (g_request.active) {
         if (now - g_request.sent_ms > g_rp_timeout_ms) {
-            fprintf(stderr,
-                    "BACnet timeout invoke=%u kind=%d\n",
-                    g_request.invoke_id,
-                    (int)g_request.kind);
+            ++timeout_count;
+            if (now >= next_timeout_log_ms) {
+                LOG_WARNF("BACnet read timeout: device=%lu invoke=%u kind=%d (%u timeouts since last report)",
+                    g_request.device ? (unsigned long)g_request.device->device_id : 0,
+                    g_request.invoke_id, (int)g_request.kind, timeout_count);
+                timeout_count = 0;
+                next_timeout_log_ms = now + 60000;
+            }
 
             if (g_request.kind == REQ_POINT_UNITS && g_request.point) {
                 g_request.point->unit[0] = '\0';
@@ -538,11 +545,7 @@ int bacnet_client_init(const char *interface_name)
      * confirmed on-device (two random ports bound, nothing on 0xBAC0). */
     bip_set_port(0xBAC0);
 
-    /* debug_print_bip()/BVLC logging is gated behind these at runtime even
-     * when compiled with PRINT_ENABLED; without them nothing shows up in
-     * the log regardless of build flags. */
-    bip_debug_enable();
-    bvlc_debug_enable();
+    /* Per-packet BIP/BVLC traces are disabled in normal operation. */
 
     address_init();
 

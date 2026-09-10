@@ -20,8 +20,7 @@
       <div v-for="field in configFields" :key="field.key"
            style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(127,127,127,.15);">
         <label :for="'gk-cfg-' + field.key" style="opacity:.7;font-size:13px;">{{ field.label }}</label>
-        <select v-if="field.type === 'select'" :id="'gk-cfg-' + field.key" v-model="config[field.key]"
-                style="min-width:200px;padding:8px 10px;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:transparent;color:inherit;">
+        <select v-if="field.type === 'select'" :id="'gk-cfg-' + field.key" v-model="config[field.key]" class="gk-select">
           <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
         </select>
         <tlt-switch v-else-if="field.type === 'switch'" :id="'gk-cfg-' + field.key"
@@ -45,7 +44,36 @@
       </div>
     </tlt-card>
 
+    <tlt-card :title="$t('BACnet points and GUIDs')">
+      <p>{{ $t('Names, units and descriptions stay local. The downloaded JSON includes these fields and their GUID mapping.') }}</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+        <input v-model="pointSearch" :placeholder="$t('Search name or GUID')" aria-label="Search points" />
+        <tlt-button @click="downloadPoints">{{ $t('Download points JSON') }}</tlt-button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="gk-points">
+          <thead><tr><th>GUID</th><th>{{ $t('Name') }}</th><th>{{ $t('Unit') }}</th><th>{{ $t('Description') }}</th><th>{{ $t('Value') }}</th><th>BACnet</th></tr></thead>
+          <tbody><tr v-for="point in visiblePoints" :key="point.deviceId + ':' + point.objectType + ':' + point.objectInstance">
+            <td style="font-family:monospace;">{{ point.tag || $t('Pending first value') }}</td>
+            <td>{{ point.name || '-' }}</td><td>{{ point.unit || '-' }}</td><td>{{ point.description || '-' }}</td>
+            <td>{{ point.value == null ? '-' : point.value }}</td>
+            <td>{{ point.deviceId }}:{{ point.objectType }}:{{ point.objectInstance }}</td>
+          </tr></tbody>
+        </table>
+      </div>
+      <p v-if="!filteredPoints.length">{{ $t('No matching points available yet.') }}</p>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:12px;">
+        <tlt-button @click="pointPage = Math.max(0, currentPointPage - 1)">{{ $t('Previous') }}</tlt-button>
+        <span>{{ currentPointPage + 1 }} / {{ pointPageCount }} ({{ filteredPoints.length }})</span>
+        <tlt-button @click="pointPage = Math.min(pointPageCount - 1, currentPointPage + 1)">{{ $t('Next') }}</tlt-button>
+      </div>
+    </tlt-card>
+
     <tlt-card :title="$t('Gateway log')">
+      <select v-model="logMode" class="gk-select" aria-label="Log filter" @change="loadLog">
+        <option value="mqtt">{{ $t('MQTT and authentication') }}</option>
+        <option value="all">{{ $t('All gateway events') }}</option>
+      </select>
       <pre style="min-height:180px;max-height:420px;margin:0;padding:12px;overflow:auto;border:1px solid rgba(127,127,127,.25);border-radius:6px;white-space:pre-wrap;word-break:break-word;font-family:monospace;font-size:12px;line-height:1.45;">{{ log || '-' }}</pre>
       <div style="margin-top:14px;display:flex;gap:12px;">
         <tlt-button @click="loadLog">{{ $t('Refresh log') }}</tlt-button>
@@ -70,6 +98,9 @@ export default {
       },
       interfaces: [],
       log: '',
+      logMode: 'mqtt',
+      pointSearch: '',
+      pointPage: 0,
       timer: null,
       config: {
         enabled: '0',
@@ -94,6 +125,14 @@ export default {
     };
   },
   computed: {
+    pointRows() { return Array.isArray(this.status.pointDetails) ? this.status.pointDetails : []; },
+    filteredPoints() {
+      const query = this.pointSearch.trim().toLowerCase();
+      return this.pointRows.filter(p => !query || [p.tag, p.name, p.unit, p.description, p.deviceId].some(v => String(v == null ? '' : v).toLowerCase().includes(query)));
+    },
+    pointPageCount() { return Math.max(1, Math.ceil(this.filteredPoints.length / 50)); },
+    currentPointPage() { return Math.min(this.pointPage, this.pointPageCount - 1); },
+    visiblePoints() { return this.filteredPoints.slice(this.currentPointPage * 50, (this.currentPointPage + 1) * 50); },
     statusRows() {
       return [
         { label: this.$t('Service'), value: this.status.running ? this.$t('Running') : this.$t('Stopped'), dot: this.status.running ? 'ok' : 'bad' },
@@ -102,6 +141,11 @@ export default {
         { label: this.$t('BACnet points'), value: this.status.points },
         { label: this.$t('MQTT broker'), value: `${this.status.mqttHost || '-'}:${this.status.mqttPort || '-'}` },
         { label: this.$t('MQTT TLS'), value: this.status.mqttTls ? this.$t('Enabled') : this.$t('Disabled') },
+        { label: this.$t('MQTT messages sent (QoS 0)'), value: this.status.mqttSent || 0 },
+        { label: this.$t('Last MQTT send'), value: this.status.mqttLastSent ? new Date(this.status.mqttLastSent * 1000).toLocaleString() : '-' },
+        { label: this.$t('MQTT errors since restart'), value: this.status.mqttErrors || 0 },
+        { label: this.$t('MQTT error'), value: this.status.mqttLastError || '-' },
+        { label: this.$t('Authentication error'), value: this.status.authLastError || '-' },
         { label: this.$t('Topic root'), value: this.status.topicRoot || '-' },
       ];
     },
@@ -137,12 +181,28 @@ export default {
     this.loadInterfaces();
     this.loadConfig();
     this.loadLog();
-    this.timer = setInterval(() => this.loadRuntime(), 5000);
+    this.timer = setInterval(() => { this.loadRuntime(); this.loadLog(); }, 5000);
   },
   beforeDestroy() {
     if (this.timer) clearInterval(this.timer);
   },
+  beforeUnmount() {
+    if (this.timer) clearInterval(this.timer);
+  },
   methods: {
+    exportPoints() {
+      return JSON.stringify({ schemaVersion: 1, exportedAt: new Date().toISOString(), points: this.pointRows.map(p => ({
+        tag: p.tag || null, name: p.name || '', unit: p.unit || '', description: p.description || '',
+        deviceId: p.deviceId, objectType: p.objectType, objectInstance: p.objectInstance,
+      })) }, null, 2);
+    },
+    downloadPoints() {
+      const url = URL.createObjectURL(new Blob([this.exportPoints()], { type: 'application/json;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url; link.download = 'gk-bacnet-points.json';
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
     findPayload(value, keys) {
       if (!value || typeof value !== 'object') return null;
       if (keys.some((key) => Object.prototype.hasOwnProperty.call(value, key))) return value;
@@ -219,7 +279,9 @@ export default {
     },
     async loadLog() {
       try {
-        const response = await this.$axios.get('/api/gk_bacnet_mqtt/status/log');
+        const mode = this.logMode;
+        const response = await this.$axios.get('/api/gk_bacnet_mqtt/status/' + (mode === 'mqtt' ? 'mqtt_log' : 'log'));
+        if (mode !== this.logMode) return;
         const data = this.findPayload(response, ['log']) || {};
         this.log = data.log || '';
       } catch (error) {
@@ -234,3 +296,13 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.gk-select { min-width:200px;padding:8px 10px;border:1px solid #768294;border-radius:6px;background:#fff;color:#17212e;color-scheme:light; }
+.gk-select option { background:#fff;color:#17212e; }
+.gk-select option:checked { background:#1559a6;color:#fff; }
+.gk-select:focus-visible { outline:2px solid #438ce8;outline-offset:2px; }
+.gk-points { width:100%;border-collapse:collapse;font-size:13px; }
+.gk-points th,.gk-points td { padding:10px;text-align:left;border-bottom:1px solid rgba(127,127,127,.3); }
+.gk-points th { font-weight:600; }
+</style>

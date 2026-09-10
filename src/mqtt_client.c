@@ -13,6 +13,24 @@ static bool g_mqtt_connected = false;
 static uint64_t next_reconnect_ms;
 static unsigned token_generation;
 MQTT_SETTINGS g_mqtt_settings = { .ca_file = MQTT_CA_BUNDLE };
+MQTT_DIAGNOSTICS g_mqtt_diagnostics;
+static uint64_t next_summary_ms;
+
+static void mqtt_error(const char *stage, int rc)
+{
+    ++g_mqtt_diagnostics.failures;
+    snprintf(g_mqtt_diagnostics.error, sizeof(g_mqtt_diagnostics.error), "%s: %s (rc=%d)", stage, mosquitto_strerror(rc), rc);
+    LOG_WARNF("MQTT %s", g_mqtt_diagnostics.error);
+}
+
+static void mqtt_on_publish(struct mosquitto *mosq, void *userdata, int mid)
+{
+    (void)mosq; (void)userdata; (void)mid;
+    ++g_mqtt_diagnostics.sent;
+    g_mqtt_diagnostics.last_sent = unix_time_now();
+    if (g_mqtt_diagnostics.sent == 1)
+        LOG_INFOF("MQTT first message sent (QoS 0; broker receipt is not acknowledged)");
+}
 
 char g_mqtt_host[128] = DEFAULT_MQTT_HOST;
 int g_mqtt_port = DEFAULT_MQTT_PORT;
@@ -30,6 +48,7 @@ static void mqtt_on_connect(struct mosquitto *mosq, void *userdata, int rc)
     (void)userdata;
     g_mqtt_connected = (rc == 0);
     if (rc == 0) {
+        g_mqtt_diagnostics.error[0] = 0;
         size_t i, j;
         for (i = 0; i < MAX_DEVICES; ++i) {
             for (j = 0; j < g_devices[i].point_count; ++j) {
@@ -39,7 +58,9 @@ static void mqtt_on_connect(struct mosquitto *mosq, void *userdata, int rc)
         }
         LOG_INFOF("MQTT connected to %s:%d", g_mqtt_host, g_mqtt_port);
     } else {
-        LOG_ERRORF("MQTT connect failed rc=%d", rc);
+        ++g_mqtt_diagnostics.failures;
+        snprintf(g_mqtt_diagnostics.error, sizeof(g_mqtt_diagnostics.error), "Broker rejected connection: %s (CONNACK=%d)", mosquitto_connack_string(rc), rc);
+        LOG_ERRORF("MQTT %s", g_mqtt_diagnostics.error);
         if (g_mqtt_settings.gk_cloud && (rc == 4 || rc == 5)) gk_cloud_invalidate();
     }
 }
@@ -49,7 +70,7 @@ static void mqtt_on_disconnect(struct mosquitto *mosq, void *userdata, int rc)
     (void)mosq;
     (void)userdata;
     g_mqtt_connected = false;
-    LOG_WARNF("MQTT disconnected rc=%d", rc);
+    if (rc) mqtt_error("disconnected", rc);
 }
 
 static void mqtt_publish_raw(const char *topic, const char *payload, bool retain)
@@ -61,9 +82,9 @@ static void mqtt_publish_raw(const char *topic, const char *payload, bool retain
 
     rc = mosquitto_publish(g_mosq, NULL, topic, (int)strlen(payload), payload, 0, retain);
     if (rc != MOSQ_ERR_SUCCESS) {
-        LOG_ERRORF("MQTT publish failed topic=%s: %s", topic, mosquitto_strerror(rc));
+        mqtt_error("publish failed", rc);
         g_mqtt_connected = false;
-    }
+    } else ++g_mqtt_diagnostics.queued;
 }
 
 static void mqtt_make_point_topic(char *dst, size_t n, const char *branch,
@@ -222,6 +243,7 @@ static int create_client(void)
     if (!g_mosq) return MOSQ_ERR_NOMEM;
     mosquitto_connect_callback_set(g_mosq, mqtt_on_connect);
     mosquitto_disconnect_callback_set(g_mosq, mqtt_on_disconnect);
+    mosquitto_publish_callback_set(g_mosq, mqtt_on_publish);
     if (g_mqtt_settings.tls || g_mqtt_settings.gk_cloud) {
         const char *cert = !g_mqtt_settings.gk_cloud && g_mqtt_settings.cert_file[0] ? g_mqtt_settings.cert_file : NULL;
         const char *key = !g_mqtt_settings.gk_cloud && g_mqtt_settings.key_file[0] ? g_mqtt_settings.key_file : NULL;
@@ -243,7 +265,7 @@ static int create_client(void)
     rc = mosquitto_connect_async(g_mosq, g_mqtt_host, g_mqtt_port, 30);
     if (rc == MOSQ_ERR_SUCCESS) return rc;
 failed:
-    LOG_ERRORF("MQTT connection setup failed: %s", mosquitto_strerror(rc));
+    mqtt_error("connection setup failed", rc);
     destroy_client();
     return rc;
 }
@@ -268,6 +290,7 @@ void mqtt_client_reconnect(void)
     gk_cloud_reset();
     if (g_mqtt_settings.gk_cloud) tag_registry_init();
     next_reconnect_ms = 0;
+    g_mqtt_diagnostics.error[0] = 0;
 }
 
 void mqtt_client_loop(void)
@@ -275,6 +298,14 @@ void mqtt_client_loop(void)
     uint64_t now = monotonic_ms();
     int rc;
     gk_cloud_loop();
+    if (now >= next_summary_ms) {
+        LOG_INFOF("MQTT status=%s queued=%llu sent=%llu errors=%llu (QoS 0)",
+            g_mqtt_connected ? "connected" : "disconnected",
+            (unsigned long long)g_mqtt_diagnostics.queued,
+            (unsigned long long)g_mqtt_diagnostics.sent,
+            (unsigned long long)g_mqtt_diagnostics.failures);
+        next_summary_ms = now + 60000;
+    }
     if (g_mqtt_settings.gk_cloud) {
         if (!gk_cloud_token()) { destroy_client(); return; }
         if (g_mosq && token_generation != gk_cloud_token_generation()) {
@@ -290,7 +321,7 @@ void mqtt_client_loop(void)
     }
     rc = mosquitto_loop(g_mosq, 0, 1);
     if (rc != MOSQ_ERR_SUCCESS || (!g_mqtt_connected && now >= next_reconnect_ms)) {
-        LOG_WARNF("MQTT connection lost or timed out (rc=%d); retry in 5 seconds", rc);
+        mqtt_error(rc == MOSQ_ERR_SUCCESS ? "CONNACK timeout" : "network loop failed", rc == MOSQ_ERR_SUCCESS ? MOSQ_ERR_CONN_LOST : rc);
         destroy_client();
         next_reconnect_ms = now + 5000;
     }

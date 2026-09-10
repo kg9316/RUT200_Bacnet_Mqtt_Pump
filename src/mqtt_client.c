@@ -14,7 +14,6 @@ static uint64_t next_reconnect_ms;
 static unsigned token_generation;
 MQTT_SETTINGS g_mqtt_settings = { .ca_file = MQTT_CA_BUNDLE };
 MQTT_DIAGNOSTICS g_mqtt_diagnostics;
-static uint64_t next_summary_ms;
 
 static void mqtt_error(const char *stage, int rc)
 {
@@ -28,8 +27,6 @@ static void mqtt_on_publish(struct mosquitto *mosq, void *userdata, int mid)
     (void)mosq; (void)userdata; (void)mid;
     ++g_mqtt_diagnostics.sent;
     g_mqtt_diagnostics.last_sent = unix_time_now();
-    if (g_mqtt_diagnostics.sent == 1)
-        LOG_INFOF("MQTT first message sent (QoS 0; broker receipt is not acknowledged)");
 }
 
 char g_mqtt_host[128] = DEFAULT_MQTT_HOST;
@@ -298,14 +295,6 @@ void mqtt_client_loop(void)
     uint64_t now = monotonic_ms();
     int rc;
     gk_cloud_loop();
-    if (now >= next_summary_ms) {
-        LOG_INFOF("MQTT status=%s queued=%llu sent=%llu errors=%llu (QoS 0)",
-            g_mqtt_connected ? "connected" : "disconnected",
-            (unsigned long long)g_mqtt_diagnostics.queued,
-            (unsigned long long)g_mqtt_diagnostics.sent,
-            (unsigned long long)g_mqtt_diagnostics.failures);
-        next_summary_ms = now + 60000;
-    }
     if (g_mqtt_settings.gk_cloud) {
         if (!gk_cloud_token()) { destroy_client(); return; }
         if (g_mosq && token_generation != gk_cloud_token_generation()) {

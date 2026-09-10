@@ -16,7 +16,7 @@ jobs:
       VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v2
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve shipped package version (including metadata and capacity updates)
+      - name: Resolve shipped package version (including quiet MQTT logging)
         run: |
           set -euo pipefail
           VERSION="$(grep -m1 '^PKG_VERSION:=' package/vuci-app-gk-bacnet-mqtt-ui/Makefile | cut -d= -f2)"
@@ -188,7 +188,8 @@ jobs:
         run: |
           set -euo pipefail
           cp ipk_packages.json "$RUNNER_TEMP/ipk_packages.full.json"; trap 'cp "$RUNNER_TEMP/ipk_packages.full.json" ipk_packages.json' EXIT
-          printf '%s\n' '{' '  "vuci-app-gk-bacnet-mqtt-ui": {' '    "name": "gk_bacn…20 tokens truncated…pub; staging_dir/host/bin/usign -G -p key-build.pub -s key-build
+          printf '%s\n' '{' '  "vuci-app-gk-bacnet-mqtt-ui": {' '    "name": "gk_bacnet_mqtt"' '  }' '}' > ipk_packages.json
+          rm -f key-build key-build.pub; staging_dir/host/bin/usign -G -p key-build.pub -s key-build
           make -j1 pm V=s
           PM_BUNDLE="$(find bin/packages -type f -path '*/zipped_packages/gk_bacnet_mqtt.tar.gz' | head -1)"; test -f "$PM_BUNDLE"
           LIST="$(tar -tzf "$PM_BUNDLE")"; printf '%s\n' "$LIST"

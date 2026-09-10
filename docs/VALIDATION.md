@@ -1,4 +1,4 @@
-# Validation â€“ 10 September 2026
+# Validation – 10 September 2026
 
 Pushed to main and built successfully with the exact RUT2M SDK. Not deployed to a router.
 

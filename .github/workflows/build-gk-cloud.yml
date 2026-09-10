@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: gk-rut2m-full-build
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate:

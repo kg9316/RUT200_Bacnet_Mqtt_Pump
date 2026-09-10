@@ -58,7 +58,7 @@ jobs:
           # Teltonika's lib-bacnet. BACDL_BIP is the plain-client datalink
           # (no BBMD relay complexity). The gateway reports aggregated errors;
           # disable upstream per-packet stdout/stderr traces.
-          BACDEFS="-DBACDL_BIP=1 -DBBMD_ENABLED=0 -DPRINT_ENABLED=0"
+          BACDEFS="-DBACDL_BIP=1 -DBBMD_ENABLED=0 -DPRINT_ENABLED=0 -DMAX_ADDRESS_CACHE=500"
           BACINC="-I$BAC/src -I$BAC/ports/linux"
           BACOBJ="$RUNNER_TEMP/bacobj"
           mkdir -p "$BACOBJ"

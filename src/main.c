@@ -1,3 +1,4 @@
+#include "device_table.h"
 #include "bacnet_client.h"
 #include "config_reload.h"
 #include "gateway.h"
@@ -83,6 +84,7 @@ int main(int argc, char **argv)
 
     LOG_INFOF("stopping");
     bacnet_client_cleanup();
+    device_table_cleanup();
     mqtt_client_cleanup();
     unlink("/tmp/gk-bacnet-mqtt-status.json");
     LOG_CLOSE();

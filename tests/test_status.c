@@ -18,6 +18,8 @@ uint64_t monotonic_ms(void) { return 0; }
 time_t unix_time_now(void) { return 1789036121; }
 int main(void) {
     g_devices[0].used=true; g_devices[0].device_id=458967; g_devices[0].point_count=2;
+    g_devices[0].points=calloc(2,sizeof(POINT_STATE));
+    assert(g_devices[0].points);
     POINT_STATE *p=&g_devices[0].points[0];
     strcpy(p->name,"Point \"A\"\nline"); strcpy(p->description,"text\\path"); strcpy(p->unit,"deg C");
     p->have_value=true; p->value_kind=VALUE_NUMBER; p->numeric_value=21.5;
@@ -31,6 +33,6 @@ int main(void) {
     assert(json_object_object_get_ex(root,"points",&v) && json_object_get_int(v)==2);
     assert(json_object_object_get_ex(root,"mqttSent",&v) && json_object_get_int(v)==11);
     assert(!strstr(json_object_to_json_string(root),"DO-NOT-EXPORT-SECRET"));
-    json_object_put(root); unlink(STATUS_FILE);
+    json_object_put(root); unlink(STATUS_FILE); free(g_devices[0].points);
     puts("PASS: point/GUID mapping, JSON escaping, pending tags, MQTT counters and secret omission");
 }

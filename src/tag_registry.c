@@ -12,18 +12,6 @@
 #define TAG_REGISTRY_PATH "/etc/gk-bacnet-mqtt/tags.json"
 #endif
 static struct json_object *registry;
-static bool metadata_dirty;
-static uint64_t next_metadata_flush;
-
-static const char *entry_tag(struct json_object *entry)
-{
-    struct json_object *tag = entry;
-    if (json_object_is_type(entry, json_type_object) &&
-        !json_object_object_get_ex(entry, "t", &tag)) return NULL;
-    if (!json_object_is_type(tag, json_type_string)) return NULL;
-    const char *id = json_object_get_string(tag);
-    return strlen(id) == (size_t)json_object_get_string_len(tag) ? id : NULL;
-}
 
 static bool valid_uuid(const char *s)
 {
@@ -54,9 +42,10 @@ int tag_registry_init(void)
     if (!seen) goto invalid;
     json_object_object_foreach(registry, key, value) {
         struct json_object *duplicate;
-        const char *id = entry_tag(value);
+        const char *id = json_object_get_string(value);
         (void)key;
-        if (!id || !valid_uuid(id) ||
+        if (!json_object_is_type(value, json_type_string) || !valid_uuid(id) ||
+            strlen(id) != (size_t)json_object_get_string_len(value) ||
             json_object_object_get_ex(seen, id, &duplicate)) {
             json_object_put(seen);
             goto invalid;
@@ -75,8 +64,6 @@ void tag_registry_cleanup(void)
 {
     if (registry) json_object_put(registry);
     registry = NULL;
-    metadata_dirty = false;
-    next_metadata_flush = 0;
 }
 
 static bool persist(void)
@@ -88,12 +75,6 @@ static bool persist(void)
     snprintf(tmp, sizeof(tmp), "%s.tmp", TAG_REGISTRY_PATH);
     fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) return false;
-#ifndef _WIN32
-    /* Atomic replacements must retain the API reader's group access. */
-    struct stat st;
-    if (stat(TAG_REGISTRY_PATH, &st) != 0 || fchown(fd, st.st_uid, st.st_gid) != 0 ||
-        fchmod(fd, st.st_mode & 0777) != 0) { close(fd); unlink(tmp); return false; }
-#endif
     while (left) {
         ssize_t n = write(fd, json, left);
         if (n < 0 && errno == EINTR) continue;
@@ -109,7 +90,6 @@ static bool persist(void)
     if (dir < 0) return false;
     fd = fsync(dir);
     close(dir);
-    if (fd == 0) metadata_dirty = false;
     return fd == 0;
 }
 
@@ -119,7 +99,7 @@ const char *tag_registry_lookup(uint32_t device, unsigned type, uint32_t instanc
     struct json_object *value;
     if (!registry) return NULL;
     snprintf(key, sizeof(key), "%lu:%u:%lu", (unsigned long)device, type, (unsigned long)instance);
-    return json_object_object_get_ex(registry, key, &value) ? entry_tag(value) : NULL;
+    return json_object_object_get_ex(registry, key, &value) ? json_object_get_string(value) : NULL;
 }
 
 const char *tag_registry_get(uint32_t device, unsigned type, uint32_t instance)
@@ -131,7 +111,7 @@ const char *tag_registry_get(uint32_t device, unsigned type, uint32_t instance)
     size_t got = 0;
     if (!registry) return NULL;
     snprintf(key, sizeof(key), "%lu:%u:%lu", (unsigned long)device, type, (unsigned long)instance);
-    if (json_object_object_get_ex(registry, key, &value)) return entry_tag(value);
+    if (json_object_object_get_ex(registry, key, &value)) return json_object_get_string(value);
     fd = open("/dev/urandom", O_RDONLY);
     if (fd < 0) return NULL;
     while (got < sizeof(b)) {
@@ -147,7 +127,7 @@ const char *tag_registry_get(uint32_t device, unsigned type, uint32_t instance)
              b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
     json_object_object_foreach(registry, existing, item) {
         (void)existing;
-        if (strcmp(entry_tag(item), id) == 0) return NULL;
+        if (strcmp(json_object_get_string(item), id) == 0) return NULL;
     }
     value = json_object_new_string(id);
     if (!value) return NULL;
@@ -158,45 +138,5 @@ const char *tag_registry_get(uint32_t device, unsigned type, uint32_t instance)
         tag_registry_cleanup();
         return NULL;
     }
-    return entry_tag(value);
-}
-
-void tag_registry_set_metadata(uint32_t device, unsigned type, uint32_t instance,
-                               const char *name, const char *unit, const char *description)
-{
-    char key[80];
-    struct json_object *entry, *v;
-    if (!registry) return;
-    snprintf(key, sizeof(key), "%lu:%u:%lu", (unsigned long)device, type, (unsigned long)instance);
-    if (!json_object_object_get_ex(registry, key, &entry)) return;
-    const char *tag = entry_tag(entry);
-    if (!tag) return;
-    if (json_object_is_type(entry, json_type_string)) {
-        struct json_object *replacement = json_object_new_object();
-        if (!replacement) return;
-        v = json_object_new_string(tag);
-        if (!v) { json_object_put(replacement); return; }
-        json_object_object_add(replacement, "t", v);
-        json_object_object_add(registry, key, replacement);
-        entry = replacement;
-        metadata_dirty = true;
-    }
-    const char *keys[] = {"n", "u", "d"};
-    const char *values[] = {name ? name : "", unit ? unit : "", description ? description : ""};
-    for (unsigned i = 0; i < 3; i++) {
-        if (json_object_object_get_ex(entry, keys[i], &v) &&
-            json_object_is_type(v, json_type_string) && strcmp(json_object_get_string(v), values[i]) == 0) continue;
-        v = json_object_new_string(values[i]);
-        if (!v) continue;
-        json_object_object_add(entry, keys[i], v);
-        metadata_dirty = true;
-    }
-}
-
-void tag_registry_flush_metadata(void)
-{
-    uint64_t now = monotonic_ms();
-    if (!registry || !metadata_dirty || now < next_metadata_flush) return;
-    next_metadata_flush = now + 30000;
-    if (!persist()) LOG_ERRORF("Point metadata could not be saved; retrying in 30 seconds");
+    return json_object_get_string(value);
 }

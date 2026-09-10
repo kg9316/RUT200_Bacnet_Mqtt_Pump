@@ -82,22 +82,6 @@ static void test_guids(void)
     assert(tag_registry_init() == 0);
     assert(strcmp(first, tag_registry_get(100, 0, 1)) == 0);
     assert(strcmp(other, tag_registry_get(100, 1, 1)) == 0);
-    /* Upgrade a real legacy string entry, retain its UUID after reopening. */
-    tag_registry_set_metadata(100, 0, 1, "Room A", "deg C", "Local metadata");
-    assert(strcmp(first, tag_registry_get(100, 0, 1)) == 0);
-    tag_registry_flush_metadata();
-    assert(!metadata_dirty);
-    tag_registry_set_metadata(100, 0, 1, "Room A", "deg C", "Local metadata");
-    assert(!metadata_dirty); /* unchanged metadata must not rewrite flash */
-    tag_registry_cleanup();
-    assert(tag_registry_init() == 0);
-    assert(strcmp(first, tag_registry_get(100, 0, 1)) == 0);
-    assert(strcmp(other, tag_registry_get(100, 1, 1)) == 0);
-    struct json_object *entry, *field;
-    assert(json_object_object_get_ex(registry, "100:0:1", &entry));
-    assert(json_object_object_get_ex(entry, "n", &field));
-    assert(strcmp(json_object_get_string(field), "Room A") == 0);
-    assert(!json_object_object_get_ex(entry, "value", &field));
     tag_registry_cleanup();
     write_registry("broken JSON");
     assert(tag_registry_init() != 0);

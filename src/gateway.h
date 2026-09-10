@@ -9,8 +9,8 @@
 #include "bacnet/bacdef.h"
 #include "bacnet/bacenum.h"
 
-#define MAX_DEVICES             64
-#define MAX_POINTS_PER_DEVICE  512
+#define MAX_DEVICES            500
+#define MAX_POINTS_PER_DEVICE 10000
 #define NAME_LEN                96
 #define DESC_LEN               192
 #define UNIT_LEN                48
@@ -69,7 +69,9 @@ typedef struct {
     uint32_t next_object_index;
     bool have_object_count;
     bool object_list_complete;
-    POINT_STATE points[MAX_POINTS_PER_DEVICE];
+    POINT_STATE *points;
+    size_t point_capacity;
+    bool allocation_warned;
     size_t point_count;
     uint64_t last_seen_ms;
 } DEVICE_STATE;

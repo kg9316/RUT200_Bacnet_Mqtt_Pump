@@ -9,4 +9,5 @@ size_t device_count(void);
 bool object_type_has_present_value(BACNET_OBJECT_TYPE type);
 POINT_STATE *add_point(DEVICE_STATE *device, BACNET_OBJECT_TYPE type, uint32_t instance);
 
+void device_table_cleanup(void);
 #endif

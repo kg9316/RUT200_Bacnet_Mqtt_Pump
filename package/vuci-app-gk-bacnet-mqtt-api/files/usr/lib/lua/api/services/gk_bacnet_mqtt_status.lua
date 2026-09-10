@@ -24,23 +24,16 @@ function Service:GET_TYPE_status()
 end
 
 function Service:GET_TYPE_points()
-    local raw = read_file("/etc/gk-bacnet-mqtt/tags.json")
-    local registry = raw and json.parse(raw)
-    local points = {}
-    -- Legacy address -> GUID strings and enriched entries share the same keys.
-    for address, entry in pairs(registry or {}) do
-        local device, object_type, instance = address:match("^(%d+):(%d+):(%d+)$")
-        if device then
-            local p = type(entry) == "string" and { t = entry } or entry
-            points[#points + 1] = { t = p.t, n = p.n or "", u = p.u or "", d = p.d or "",
-                di = tonumber(device), ot = tonumber(object_type), oi = tonumber(instance) }
+    local raw = read_file("/tmp/gk-bacnet-mqtt-status.json")
+    local snapshot = raw and json.parse(raw) or {}
+    local points = (snapshot or {}).pointDetails or {}
+    -- Accept a snapshot from the previous daemon while an upgrade is in progress.
+    for i, p in ipairs(points) do
+        if p.tag ~= nil or p.deviceId ~= nil then
+            points[i] = { t = p.tag, n = p.name or "", u = p.unit or "", d = p.description or "",
+                di = p.deviceId, ot = p.objectType, oi = p.objectInstance }
         end
     end
-    table.sort(points, function(a, b)
-        if a.di ~= b.di then return a.di < b.di end
-        if a.ot ~= b.ot then return a.ot < b.ot end
-        return a.oi < b.oi
-    end)
     local cursor = uci.cursor()
     local controller = cursor:get("gk_bacnet_mqtt", "main", "controller_id") or ""
     return self:ResponseOK({ schemaVersion = 2, controllerId = controller,

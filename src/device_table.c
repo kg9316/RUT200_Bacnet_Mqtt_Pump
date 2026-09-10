@@ -1,6 +1,8 @@
 #include "device_table.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include "logger.h"
 #include <string.h>
 
 DEVICE_STATE g_devices[MAX_DEVICES];
@@ -93,10 +95,37 @@ POINT_STATE *add_point(DEVICE_STATE *device, BACNET_OBJECT_TYPE type, uint32_t i
     if (device->point_count >= MAX_POINTS_PER_DEVICE)
         return NULL;
 
+    if (device->point_count == device->point_capacity) {
+        size_t capacity = device->point_capacity ? device->point_capacity * 2 : 16;
+        if (capacity > MAX_POINTS_PER_DEVICE) capacity = MAX_POINTS_PER_DEVICE;
+        size_t pending_index = 0;
+        bool pending = g_request.device == device && g_request.point != NULL;
+        if (pending) pending_index = (size_t)(g_request.point - device->points);
+        POINT_STATE *grown = realloc(device->points, capacity * sizeof(*grown));
+        if (!grown) {
+            if (!device->allocation_warned)
+                LOG_ERRORF("Not enough memory for more BACnet points: device=%lu points=%lu",
+                           (unsigned long)device->device_id, (unsigned long)device->point_count);
+            device->allocation_warned = true;
+            return NULL;
+        }
+        device->points = grown;
+        device->point_capacity = capacity;
+        device->allocation_warned = false;
+        if (pending) g_request.point = &grown[pending_index];
+    }
+
     point = &device->points[device->point_count++];
     memset(point, 0, sizeof(*point));
     point->object_type = type;
     point->object_instance = instance;
     point->next_poll_ms = monotonic_ms();
     return point;
+}
+
+void device_table_cleanup(void)
+{
+    memset(&g_request, 0, sizeof(g_request));
+    for (size_t i = 0; i < MAX_DEVICES; i++) free(g_devices[i].points);
+    memset(g_devices, 0, sizeof(g_devices));
 }

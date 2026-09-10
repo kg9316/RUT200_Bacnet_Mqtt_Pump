@@ -75,7 +75,7 @@ jobs:
           for pkg in gk-bacnet-mqtt vuci-app-gk-bacnet-mqtt-api vuci-app-gk-bacnet-mqtt-ui; do
             grep -q "^Package: ${pkg}$" tmp/.packageinfo || {
               echo "MISSING PACKAGE METADATA: $pkg"
-              find tmp -type f -name '*gk*' -print -exec cat {} \;
+              find tmp -type f -name '*gk-bacnet*' -print -exec cat {} \;
               make -C "package/feeds/vuci/$pkg" TOPDIR="$PWD" DUMP=1 V=s || true
               exit 1
             }

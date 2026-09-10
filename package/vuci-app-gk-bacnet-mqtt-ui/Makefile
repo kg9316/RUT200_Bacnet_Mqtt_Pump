@@ -6,6 +6,9 @@ APP_NAME:=$(notdir ${CURDIR})
 # as vuci-app-...-ui so Teltonika Package Manager treats it as a native VuCI app.
 APP_DEPENDS:=+libmosquitto-ssl +libatomic +api-core +libcurl +libjson-c +libuci +ca-bundle
 CLOSED_GPL_INSTALL:=y
+NO_API_DEPEND:=1
+# Register explicitly below so SDK include/scan.mk discovers this package.
+CUSTOM_INSTALL:=1
 
 PKG_VERSION:=1.0.0
 PKG_RELEASE:=40
@@ -31,3 +34,4 @@ define Package/$(APP_NAME)/conffiles
 endef
 
 include ../app.mk
+$(eval $(call BuildPackage,$(APP_NAME)))

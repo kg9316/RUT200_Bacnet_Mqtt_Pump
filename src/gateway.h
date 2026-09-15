@@ -11,6 +11,7 @@
 
 #define MAX_DEVICES            500
 #define MAX_POINTS_PER_DEVICE 10000
+#define MAX_TOTAL_POINTS 10000
 #define RPM_BATCH_MAX 100
 #define RPM_BATCH_DEFAULT 30
 
@@ -48,6 +49,7 @@ typedef struct {
     char description[DESC_LEN];
     char unit[UNIT_LEN];
     bool metadata_complete;
+    bool metadata_synced;
     bool config_published;
     VALUE_KIND value_kind;
     double numeric_value;
@@ -81,11 +83,14 @@ typedef struct {
     bool allocation_warned;
     size_t point_count;
     uint64_t last_seen_ms;
+    uint64_t last_iam_ms;
     time_t last_response;
     uint64_t retry_after_ms;
     uint64_t discovery_after_ms;
     size_t point_cursor;
     size_t metadata_cursor;
+    bool metadata_done;
+    uint64_t values_check_ms;
     unsigned max_apdu;
     uint8_t state; /* 0 unknown, 1 online, 2 offline */
     uint8_t failures;

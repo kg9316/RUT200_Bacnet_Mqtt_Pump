@@ -27,6 +27,7 @@ static uint64_t next_timeout_log_ms;
 static unsigned timeout_count;
 static size_t device_cursor;
 static uint64_t timer_last_ms;
+static uint64_t next_recovery_ms;
 
 static bool application_value_to_uint32(const BACNET_APPLICATION_DATA_VALUE *value,
                                         uint32_t *out)
@@ -295,7 +296,10 @@ static void gateway_i_am_handler(uint8_t *request,
          * missing "allocate a free slot" fallback. */
         address_add(device_id, max_apdu, src);
         DEVICE_STATE *d = get_or_create_device(device_id);
-        if (d) d->max_apdu = max_apdu;
+        if (d) {
+            d->max_apdu = max_apdu;
+            d->last_iam_ms = monotonic_ms();
+        }
     }
 }
 
@@ -676,7 +680,7 @@ void bacnet_client_set_rpm_max(unsigned limit)
 
 static bool schedule_values(DEVICE_STATE *d, uint64_t now)
 {
-    if (!d->point_count) return false;
+    if (!d->point_count || now < d->values_check_ms) return false;
     size_t selected[RPM_BATCH_MAX]; unsigned count=0;
     unsigned budget=d->max_apdu ? d->max_apdu : 480;
     if (budget>MAX_APDU) budget=MAX_APDU;
@@ -693,7 +697,7 @@ static bool schedule_values(DEVICE_STATE *d, uint64_t now)
         if (used+20>budget || count>=limit) {d->point_cursor=i;break;}
         selected[count++]=i;used+=20; /* includes common property-error responses */
     }
-    if (!count) return false;
+    if (!count) { d->values_check_ms = now + 100; return false; }
     if(count==1) return schedule_poll(d,&d->points[selected[0]],now);
     BACNET_READ_ACCESS_DATA objects[RPM_BATCH_MAX];
     BACNET_PROPERTY_REFERENCE props[RPM_BATCH_MAX];uint8_t pdu[MAX_MPDU];
@@ -718,6 +722,11 @@ static void scheduler_run(void)
 {
     uint64_t now=monotonic_ms();
     if(g_request.active) {
+        /* Recovery probes get one timeout window, without waiting for a retry. */
+        if (g_request.device->failures && now-g_request.sent_ms >= g_rp_timeout_ms) {
+            request_failed(true);
+            return;
+        }
         /* TSM owns retransmission and timeout. A bounded watchdog also releases its invoke ID. */
         if(tsm_invoke_id_failed(g_request.invoke_id) || tsm_invoke_id_free(g_request.invoke_id) ||
            now-g_request.sent_ms>(uint64_t)g_rp_timeout_ms*3+1000) {
@@ -740,19 +749,36 @@ static void scheduler_run(void)
             device_timed_out(d);continue;
         }
         d->max_apdu=apdu;
-        if(d->state==2) {
-            if(send_read_property(REQ_DEVICE_NAME,d,NULL,OBJECT_DEVICE,d->device_id,PROP_OBJECT_NAME,BACNET_ARRAY_ALL,0))return;
+        if(d->state==2 || d->failures) {
+            /* WhoIs already checks presence. Do not repeatedly unicast-probe a
+             * silent offline device; a fresh I-Am makes it eligible again.
+             * I-Am alone never clears read failures or bypasses the budget. */
+            if (d->state==2 && (!d->last_iam_ms || now-d->last_iam_ms > (uint64_t)g_discovery_ms*3)) continue;
+            if (now < next_recovery_ms) continue;
+            if(send_read_property(REQ_DEVICE_NAME,d,NULL,OBJECT_DEVICE,d->device_id,PROP_OBJECT_NAME,BACNET_ARRAY_ALL,0)) {
+                next_recovery_ms = now + (uint64_t)g_rp_timeout_ms * 10 + 1000;
+                return;
+            }
             d->retry_after_ms=now+1000;continue;
         }
         /* Rotate discovery, metadata, values as well as devices. Cached points need not wait for discovery. */
         for(unsigned phase=0;phase<3;phase++) {
             unsigned task=d->phase;d->phase=(task+1)%3;
             if(task==0 && d->discovery_after_ms<=now && schedule_device_work(d))return;
-            if(task==1 && d->point_count) {
+            if(task==1 && d->point_count && !d->metadata_done) {
+                bool complete = true;
                 for(size_t j=0;j<d->point_count;j++) {
                     size_t k=d->metadata_cursor;d->metadata_cursor=(k+1)%d->point_count;
+                    if (!d->points[k].metadata_complete) complete = false;
+                    else if (!d->points[k].metadata_synced) {
+                        POINT_STATE *p = &d->points[k];
+                        if (!tag_registry_get(d->device_id,p->object_type,p->object_instance)) { complete = false; continue; }
+                        tag_registry_set_metadata(d->device_id,p->object_type,p->object_instance,p->name,p->unit,p->description);
+                        p->metadata_synced = true;
+                    }
                     if(d->points[k].retry_after_ms<=now && schedule_metadata(d,&d->points[k]))return;
                 }
+                d->metadata_done = complete;
             }
             if(task==2 && schedule_values(d,now))return;
         }

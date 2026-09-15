@@ -13,6 +13,8 @@
 #define TAG_REGISTRY_PATH "/etc/gk-bacnet-mqtt/tags.json"
 #endif
 static struct json_object *registry;
+static struct json_object *pending_ids;
+static struct json_object *identity_index;
 static bool metadata_dirty;
 static uint64_t next_metadata_flush;
 
@@ -73,7 +75,9 @@ int tag_registry_init(void)
         }
         json_object_object_add(seen, id, json_object_new_boolean(true));
     }
-    json_object_put(seen);
+    identity_index = seen;
+    pending_ids = json_object_new_object();
+    if (!pending_ids) goto invalid;
     return 0;
 invalid:
     LOG_ERRORF("GUID registry invalid; restore it before publishing");
@@ -85,6 +89,9 @@ void tag_registry_cleanup(void)
 {
     if (registry) json_object_put(registry);
     registry = NULL;
+    if (pending_ids) json_object_put(pending_ids);
+    if (identity_index) json_object_put(identity_index);
+    pending_ids = identity_index = NULL;
     metadata_dirty = false;
     next_metadata_flush = 0;
 }
@@ -93,6 +100,7 @@ static bool persist(void)
 {
     const char *json = json_object_to_json_string_ext(registry, JSON_C_TO_STRING_PLAIN);
     char tmp[512];
+    if (!json) return false;
     size_t left = strlen(json);
     int fd, dir;
     snprintf(tmp, sizeof(tmp), "%s.tmp", TAG_REGISTRY_PATH);
@@ -119,7 +127,11 @@ static bool persist(void)
     if (dir < 0) return false;
     fd = fsync(dir);
     close(dir);
-    if (fd == 0) metadata_dirty = false;
+    if (fd == 0) {
+        metadata_dirty = false;
+        if (pending_ids) json_object_put(pending_ids);
+        pending_ids = NULL;
+    }
     return fd == 0;
 }
 
@@ -155,21 +167,30 @@ const char *tag_registry_get(uint32_t device, unsigned type, uint32_t instance)
     b[8] = (b[8] & 0x3f) | 0x80;
     snprintf(id, sizeof(id), "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
              b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
-    json_object_object_foreach(registry, existing, item) {
-        (void)existing;
-        const char *existing_tag = entry_tag(item);
-        if (existing_tag && strcmp(existing_tag, id) == 0) return NULL;
-    }
+    struct json_object *duplicate;
+    if (!identity_index || json_object_object_get_ex(identity_index, id, &duplicate)) return NULL;
+    if (!pending_ids) pending_ids = json_object_new_object();
+    if (!pending_ids) return NULL;
     value = json_object_new_string(id);
     if (!value) return NULL;
-    json_object_object_add(registry, key, value);
-    if (!persist()) {
-        LOG_ERRORF("GUID registry could not be saved; publishing suspended");
-        /* Do not use an identity until both file and directory are durable. */
+    /* A missing pending marker must never make an unsaved identity publishable.
+     * NULL values are sufficient for these sets: membership is tested by key. */
+    if (json_object_object_add(pending_ids, id, NULL) != 0 ||
+        json_object_object_add(identity_index, id, NULL) != 0 ||
+        json_object_object_add(registry, key, value) != 0) {
+        json_object_put(value);
         tag_registry_cleanup();
+        LOG_ERRORF("Not enough memory to prepare GUID; publishing suspended");
         return NULL;
     }
+    metadata_dirty = true;
     return entry_tag(value);
+}
+
+bool tag_registry_is_durable(const char *id)
+{
+    struct json_object *unused;
+    return registry && id && (!pending_ids || !json_object_object_get_ex(pending_ids, id, &unused));
 }
 
 void tag_registry_set_metadata(uint32_t device, unsigned type, uint32_t instance,
@@ -272,6 +293,8 @@ void tag_registry_restore_devices(void)
         if (!d) continue;
         POINT_STATE *p = add_point(d, (BACNET_OBJECT_TYPE)ot, oi);
         if (!p || !json_object_is_type(entry, json_type_object)) continue;
+        p->metadata_synced = false;
+        d->metadata_done = false;
         const char *keys[] = {"n", "u", "d"};
         char *dest[] = {p->name, p->unit, p->description};
         size_t sizes[] = {sizeof(p->name), sizeof(p->unit), sizeof(p->description)};

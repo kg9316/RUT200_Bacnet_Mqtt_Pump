@@ -7,6 +7,13 @@
 
 DEVICE_STATE g_devices[MAX_DEVICES];
 REQUEST_STATE g_request;
+static size_t total_points;
+static bool total_limit_warned;
+/* Open-addressed lookup stores indices, so realloc never invalidates it. */
+#define POINT_INDEX_SIZE 32768
+typedef struct { uint64_t key; uint16_t index_plus_one; } POINT_INDEX;
+static POINT_INDEX *point_index;
+
 
 DEVICE_STATE *find_device(uint32_t id)
 {
@@ -83,18 +90,28 @@ bool object_type_has_present_value(BACNET_OBJECT_TYPE type)
 
 POINT_STATE *add_point(DEVICE_STATE *device, BACNET_OBJECT_TYPE type, uint32_t instance)
 {
-    size_t i;
     POINT_STATE *point;
 
     if (!object_type_has_present_value(type))
         return NULL;
 
-    for (i = 0; i < device->point_count; i++) {
-        if (device->points[i].object_type == type &&
-            device->points[i].object_instance == instance)
-            return &device->points[i];
+    if (instance > 4194303 || device->device_id > 4194303) return NULL;
+    if (!point_index) point_index = calloc(POINT_INDEX_SIZE, sizeof(*point_index));
+    if (!point_index) return NULL;
+    uint64_t key = ((uint64_t)device->device_id << 32) | ((uint64_t)(unsigned)type << 22) | instance;
+    uint64_t hash = key;
+    hash ^= hash >> 33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash >> 33;
+    size_t slot = (size_t)hash & (POINT_INDEX_SIZE-1);
+    while (point_index[slot].index_plus_one) {
+        if (point_index[slot].key == key) return &device->points[point_index[slot].index_plus_one-1];
+        slot = (slot+1) & (POINT_INDEX_SIZE-1);
     }
 
+    if (total_points >= MAX_TOTAL_POINTS) {
+        if (!total_limit_warned) LOG_ERRORF("Total BACnet point limit reached: %u", MAX_TOTAL_POINTS);
+        total_limit_warned = true;
+        return NULL;
+    }
     if (device->point_count >= MAX_POINTS_PER_DEVICE)
         return NULL;
 
@@ -118,6 +135,11 @@ POINT_STATE *add_point(DEVICE_STATE *device, BACNET_OBJECT_TYPE type, uint32_t i
         if (pending) g_request.point = &grown[pending_index];
     }
 
+    point_index[slot].key = key;
+    point_index[slot].index_plus_one = (uint16_t)(device->point_count+1);
+    ++total_points;
+    device->metadata_done = false;
+    device->values_check_ms = 0;
     point = &device->points[device->point_count++];
     memset(point, 0, sizeof(*point));
     point->object_type = type;
@@ -131,4 +153,7 @@ void device_table_cleanup(void)
     memset(&g_request, 0, sizeof(g_request));
     for (size_t i = 0; i < MAX_DEVICES; i++) free(g_devices[i].points);
     memset(g_devices, 0, sizeof(g_devices));
+    free(point_index); point_index = NULL;
+    total_points = 0;
+    total_limit_warned = false;
 }

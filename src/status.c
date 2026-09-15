@@ -20,7 +20,7 @@ static uint64_t g_next_status_ms;
 void status_write_now(void)
 {
     char tmp_path[160];
-    size_t i,j,count=0;
+    size_t i,count=0;
     uint64_t now=monotonic_ms();
     struct json_object *root=json_object_new_object();
     struct json_object *devices=json_object_new_array();
@@ -41,13 +41,7 @@ void status_write_now(void)
         tag_registry_set_device_name(d->device_id,d->name);
         NUM(row,"retryIn",d->retry_after_ms>now?(d->retry_after_ms-now+999)/1000:0);
         json_object_array_add(devices,row);
-        for(j=0;j<d->point_count;j++) {
-            POINT_STATE *p=&d->points[j];
-            ++count;
-            if (p->metadata_complete)
-                tag_registry_set_metadata(d->device_id, (unsigned)p->object_type, p->object_instance,
-                                          p->name, p->unit, p->description);
-        }
+        count += d->point_count;
     }
     tag_registry_flush_metadata();
     json_object_object_add(root,"deviceDetails",devices);

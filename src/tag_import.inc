@@ -141,6 +141,7 @@ static const char *import_document(struct json_object *doc, unsigned *added, uns
             if (!json_object_object_get_ex(counts,key,&v)) json_object_object_add(counts,key,json_object_new_int(0));
         }
     }
+    if (json_object_object_length(seen)>MAX_TOTAL_POINTS) {error="Too many points in total (maximum 10000)";goto done;}
     if (json_object_object_length(counts)>MAX_DEVICES) {error="Too many BACnet devices";goto done;}
     if (strlen(json_object_to_json_string_ext(candidate,JSON_C_TO_STRING_PLAIN))>IMPORT_LIMIT) {error="Merged registry exceeds 2 MB";goto done;}
     struct json_object *previous=registry;
@@ -151,6 +152,8 @@ static const char *import_document(struct json_object *doc, unsigned *added, uns
         error="Unable to save import durably; gateway requires registry recovery";goto done;
     }
     json_object_put(previous);
+    if (identity_index) json_object_put(identity_index);
+    identity_index = json_object_get(seen);
     tag_registry_restore_devices();
 done:
     if (entries) json_object_put(entries);

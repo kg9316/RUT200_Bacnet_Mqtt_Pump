@@ -211,7 +211,7 @@ char *gk_cloud_message(const DEVICE_STATE *device, const POINT_STATE *point,
     int n;
     if (!point->have_value) return NULL;
     tag_id = tag_registry_get(device->device_id, (unsigned)point->object_type, point->object_instance);
-    if (!tag_id) return NULL;
+    if (!tag_id || !tag_registry_is_durable(tag_id)) return NULL;
     n = snprintf(topic, topic_size, "c/%s/t/%s", g_mqtt_settings.controller_id, tag_id);
     if (n < 0 || (size_t)n >= topic_size) return NULL;
     switch (point->value_kind) {

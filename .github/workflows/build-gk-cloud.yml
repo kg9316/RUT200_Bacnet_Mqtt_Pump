@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 52: validated JSON upload and GUID-preserving restore.
+# Release 53: bounded recovery using I-Am, batched GUID persistence and 10000-point capacity.
 
 on:
   workflow_dispatch:

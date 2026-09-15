@@ -10,6 +10,8 @@ unsigned g_poll_ms=5000,g_rp_timeout_ms=3000,g_discovery_ms=10000;
 uint64_t monotonic_ms(void){return clock_ms;}
 time_t unix_time_now(void){return 1789000000+clock_ms/1000;}
 void safe_copy(char*d,size_t n,const char*s){snprintf(d,n,"%s",s?s:"");}
+const char *tag_registry_get(uint32_t d,unsigned t,uint32_t i){(void)d;(void)t;(void)i;return "test";}
+void tag_registry_set_metadata(uint32_t d,unsigned t,uint32_t i,const char*n,const char*u,const char*s){(void)d;(void)t;(void)i;(void)n;(void)u;(void)s;}
 void tag_registry_set_state_text(DEVICE_STATE*d,POINT_STATE*p,uint32_t v,const char*t){(void)d;(void)p;(void)v;(void)t;}
 void mqtt_publish_config(DEVICE_STATE*d,POINT_STATE*p){(void)d;(void)p;}
 void mqtt_publish_live_if_needed(DEVICE_STATE*d,POINT_STATE*p){(void)d;(void)p;published++;}
@@ -68,6 +70,21 @@ int main(void){
  p->next_poll_ms=0;assert(schedule_poll(a,p,clock_ms));request_clear();
  state_text_advance(p,REQ_POINT_STATE_TEXT);assert(p->state_text_index==3);
  state_text_advance(p,REQ_POINT_STATE_TEXT);assert(p->metadata_complete);
+ device_table_cleanup();
+ next_recovery_ms=0;device_cursor=0;
+ a=device(700,1); b=device(701,1); DEVICE_STATE*c=device(702,1);
+ a->state=b->state=2;a->failures=b->failures=3;
+ a->last_iam_ms=b->last_iam_ms=clock_ms;
+ scheduler_run();assert(g_request.device==a && g_request.kind==REQ_DEVICE_NAME);
+ clock_ms+=g_rp_timeout_ms;scheduler_run();assert(!g_request.active);
+ scheduler_run();assert(g_request.device==c);request_clear();
+ assert(b->last_response==0); /* second offline device cannot consume another timeout */
+ request_clear();next_recovery_ms=0;device_cursor=0;
+ a->retry_after_ms=b->retry_after_ms=0;
+ a->last_iam_ms=b->last_iam_ms=0;
+ scheduler_run();assert(g_request.device==c);request_clear(); /* silent offline devices are skipped */
+ a->last_iam_ms=clock_ms;device_cursor=0;
+ scheduler_run();assert(g_request.device==a);request_clear(); /* fresh presence permits a budgeted probe */
  device_table_cleanup();puts("PASS: live RPM limits, APDU bounds, state metadata scheduling, optional-property errors and polling during metadata reads");
 }
 

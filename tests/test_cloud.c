@@ -38,7 +38,13 @@ static int test_read(int fd, void *data, unsigned n)
     return _read(fd, data, n);
 }
 static int test_close(int fd) { return fd >= 32000 ? 0 : _close(fd); }
-static int test_fsync(int fd) { return fd >= 32000 ? 0 : _commit(fd); }
+static bool fail_sync;
+static unsigned file_syncs;
+static int test_fsync(int fd) {
+    if (fail_sync) return -1;
+    if (fd < 32000) ++file_syncs;
+    return fd >= 32000 ? 0 : _commit(fd);
+}
 static int test_rename(const char *from, const char *to)
 {
     for (int i = 0; i < 100; i++) {
@@ -79,6 +85,21 @@ static void test_guids(void)
     safe_copy(other, sizeof(other), tag_registry_get(100, 1, 1));
     assert(strcmp(first, other) != 0);
     for (unsigned i = 2; i < 50; ++i) assert(tag_registry_get(100, 0, i));
+    assert(!tag_registry_is_durable(first));
+#ifdef _WIN32
+    assert(file_syncs == 0); /* identities are collected without per-point writes */
+    fail_sync = true;
+    tag_registry_flush_metadata();
+    assert(!tag_registry_is_durable(first));
+    assert(!strcmp(first,tag_registry_get(100,0,1)));
+    fail_sync = false;
+    test_clock += 30001;
+#endif
+    tag_registry_flush_metadata();
+    assert(tag_registry_is_durable(first));
+#ifdef _WIN32
+    assert(file_syncs == 1); /* one durable write for all 50 identities */
+#endif
     tag_registry_cleanup();
     assert(tag_registry_init() == 0);
     assert(strcmp(first, tag_registry_get(100, 0, 1)) == 0);
@@ -88,6 +109,7 @@ static void test_guids(void)
     tag_registry_set_device_name(100, "Controller A");
     tag_registry_set_device_name(200, "Empty controller");
     assert(strcmp(first, tag_registry_get(100, 0, 1)) == 0);
+    test_clock += 30001;
     tag_registry_flush_metadata();
     assert(!metadata_dirty);
     tag_registry_set_metadata(100, 0, 1, "Room A", "deg C", "Local metadata");
@@ -98,6 +120,9 @@ static void test_guids(void)
     assert(!strcmp(known->points[0].name,"Room A") && !known->points[0].have_value);
     assert(tag_registry_lookup(100,0,1));
     device_table_cleanup();
+    assert(tag_registry_is_durable(first));
+    tag_registry_flush_metadata();
+    assert(tag_registry_is_durable(first));
     tag_registry_cleanup();
     assert(tag_registry_init() == 0);
     assert(strcmp(first, tag_registry_get(100, 0, 1)) == 0);
@@ -156,6 +181,9 @@ static void test_messages(void)
     safe_copy(point.unit, sizeof(point.unit), "PRIVATE UNIT");
     safe_copy(point.string_value, sizeof(point.string_value), "quote\" newline\n slash\\");
     safe_copy(g_mqtt_settings.controller_id, sizeof(g_mqtt_settings.controller_id), "test-controller");
+    assert(tag_registry_get(100,0,1));
+    assert(gk_cloud_message(device,&point,topic,sizeof(topic)) == NULL);
+    test_clock += 30001; tag_registry_flush_metadata();
     for (size_t i = 0; i < 4; i++) {
         struct json_object *root, *value;
         point.value_kind = kinds[i];

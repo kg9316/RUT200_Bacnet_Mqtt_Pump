@@ -132,7 +132,6 @@ export default {
         { dataIndex: 'state', title: this.$t('Status') },
         { dataIndex: 'points', title: this.$t('Known points') },
         { dataIndex: 'pollModeText', title: this.$t('Read mode') },
-        { dataIndex: 'lastPollText', title: this.$t('Last value request') },
         { dataIndex: 'rpmLimitText', title: this.$t('RPM limit') },
         { dataIndex: 'lastResponseText', title: this.$t('Last response') },
         { dataIndex: 'retryIn', title: this.$t('Retry in seconds') },

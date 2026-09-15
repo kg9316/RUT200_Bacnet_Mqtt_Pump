@@ -93,6 +93,8 @@ export default {
       },
       interfaces: [],
       log: '',
+      logClearing: false,
+      logGeneration: 0,
       logMode: 'mqtt',
       exportBusy: false,
       exportError: '',
@@ -336,19 +338,27 @@ export default {
     },
     async loadLog() {
       try {
+        const generation = this.logGeneration;
         const mode = this.logMode;
         const response = await this.$axios.get('/api/gk_bacnet_mqtt/status/' + (mode === 'mqtt' ? 'mqtt_log' : 'log'));
-        if (mode !== this.logMode) return;
+        if (mode !== this.logMode || generation !== this.logGeneration || this.logClearing) return;
         const data = this.findPayload(response, ['log']) || {};
         this.log = data.log || '';
       } catch (error) {
         this.log = this.$t('Unable to read gateway log');
       }
     },
-    clearLog() {
-      // Only clears this view; logread has no per-tag clear, and the
-      // underlying system log is shared with every other service.
-      this.log = '';
+    async clearLog() {
+      if (this.logClearing) return;
+      this.logClearing = true;
+      this.logGeneration = (this.logGeneration || 0) + 1;
+      try {
+        const response = await this.$axios.post('/api/gk_bacnet_mqtt/config/config', {data:{action:'clear_log'}});
+        const result = this.findPayload(response, ['cleared']);
+        if (!result || !result.cleared) throw new Error('Unable to clear log');
+        this.log = '';
+      } catch (error) { this.log = this.$t('Unable to clear gateway log. Please try again.'); }
+      finally { this.logClearing = false; }
     },
   },
 };

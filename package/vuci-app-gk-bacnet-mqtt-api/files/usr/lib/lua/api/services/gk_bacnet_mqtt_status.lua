@@ -66,21 +66,32 @@ function Service:GET_TYPE_interfaces()
 	return self:ResponseOK({ interfaces = interfaces })
 end
 
+local function gateway_log(mqtt_only)
+    local p=io.popen("logread -e gk-bacnet-mqtt 2>/dev/null | tail -n 200")
+    local text=""
+    if p then text=p:read("*a") or "";p:close() end
+    local marker=read_file("/tmp/gk-bacnet-mqtt-import/log-marker") or ""
+    if marker~="" then
+        local after=1
+        while true do
+            local first,last=text:find(marker,after,true)
+            if not first then break end
+            after=last+1
+        end
+        text=text:sub(after)
+    end
+    if not mqtt_only then return text end
+    local lines={}
+    for line in text:gmatch("[^\n]+") do
+        if line:find("MQTT",1,true) or line:find("GK ",1,true) then lines[#lines+1]=line end
+    end
+    return table.concat(lines,"\n")
+end
+
 function Service:GET_TYPE_log()
-	local p = io.popen("logread -e gk-bacnet-mqtt 2>/dev/null | tail -n 200")
-	local log = ""
-	if p then
-		log = p:read("*a") or ""
-		p:close()
-	end
-	return self:ResponseOK({ log = log })
+    return self:ResponseOK({log=gateway_log(false)})
 end
-
 function Service:GET_TYPE_mqtt_log()
-	local p = io.popen("logread -e gk-bacnet-mqtt 2>/dev/null | grep -E 'MQTT|GK ' | tail -n 200")
-	local log = ""
-	if p then log = p:read("*a") or ""; p:close() end
-	return self:ResponseOK({ log = log })
+    return self:ResponseOK({log=gateway_log(true)})
 end
-
 return Service

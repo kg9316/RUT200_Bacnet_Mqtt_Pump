@@ -77,6 +77,19 @@ end
 
 local function do_put(self)
     local body = self.arguments and self.arguments.data
+    if type(body)=="table" and body.action=="clear_log" then
+        local p=io.popen("logread -e gk-bacnet-mqtt 2>/dev/null | tail -n 1")
+        if not p then return self:ResponseError("Unable to read gateway log") end
+        local line=p:read("*a") or "";p:close()
+        local path="/tmp/gk-bacnet-mqtt-import/log-marker"
+        local f=io.open(path .. ".tmp","w")
+        if not f then return self:ResponseError("Unable to clear gateway log view") end
+        local ok=f:write(line);local closed=f:close()
+        if not ok or not closed or not os.rename(path .. ".tmp",path) then
+            os.remove(path .. ".tmp");return self:ResponseError("Unable to clear gateway log view")
+        end
+        return self:ResponseOK({cleared=true})
+    end
     if type(body) == "table" and body.document ~= nil then
         return import_points(self)
     end

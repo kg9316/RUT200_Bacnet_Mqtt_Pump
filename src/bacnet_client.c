@@ -434,8 +434,10 @@ static void gateway_reject_handler(BACNET_ADDRESS *src, uint8_t id, uint8_t reas
 {
     if (!request_matches(src,id)) return;
     device_answered(g_request.device);
-    if (g_request.kind == REQ_POINT_MULTIPLE && reason == REJECT_REASON_UNRECOGNIZED_SERVICE)
+    if (g_request.kind == REQ_POINT_MULTIPLE && reason == REJECT_REASON_UNRECOGNIZED_SERVICE) {
         g_request.device->rpm_limit = 1;
+        g_request.device->rpm_unsupported = true;
+    }
     request_failed(false);
 }
 
@@ -480,6 +482,7 @@ static void gateway_rpm_ack(uint8_t *buf, uint16_t n, BACNET_ADDRESS *src,
         seen[i]=true;
     }
     device_answered(d);
+    if (n) d->rpm_confirmed=true;
     for(unsigned i=0;i<g_request.batch_count;i++) if(!seen[i]) point_failed(&d->points[g_request.batch[i]]);
     request_clear();return;
 malformed:
@@ -606,13 +609,26 @@ static bool schedule_poll(DEVICE_STATE *device,
     return sent;
 }
 
+unsigned g_rpm_batch_max = RPM_BATCH_DEFAULT;
+
+void bacnet_client_set_rpm_max(unsigned limit)
+{
+    if (limit < 1 || limit > RPM_BATCH_MAX || limit == g_rpm_batch_max) return;
+    g_rpm_batch_max = limit;
+    for (size_t i=0; i<MAX_DEVICES; i++) {
+        DEVICE_STATE *d=&g_devices[i];
+        if (d->used) d->rpm_limit=d->rpm_unsupported ? 1 : 0;
+    }
+}
+
 static bool schedule_values(DEVICE_STATE *d, uint64_t now)
 {
     if (!d->point_count) return false;
     size_t selected[RPM_BATCH_MAX]; unsigned count=0;
     unsigned budget=d->max_apdu ? d->max_apdu : 480;
     if (budget>MAX_APDU) budget=MAX_APDU;
-    unsigned used=3, limit=d->rpm_limit ? d->rpm_limit : RPM_BATCH_MAX;
+    unsigned used=3, limit=d->rpm_limit ? d->rpm_limit : g_rpm_batch_max;
+    if (limit>g_rpm_batch_max) limit=g_rpm_batch_max;
     for(size_t step=0;step<d->point_count;step++) {
         size_t i=d->point_cursor;d->point_cursor=(i+1)%d->point_count;
         POINT_STATE *p=&d->points[i];

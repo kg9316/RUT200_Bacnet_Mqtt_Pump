@@ -44,6 +44,17 @@ int main(void){
  gateway_reject_handler(&src,g_request.invoke_id,REJECT_REASON_UNRECOGNIZED_SERVICE);
  assert(!g_request.active && a->rpm_limit==1 && a->state==1);
  clock_ms+=10000;assert(schedule_values(a,clock_ms));assert(g_request.kind==REQ_POINT_PRESENT_VALUE);
- request_clear();device_table_cleanup();puts("PASS: fair rotation, point delay, offline backoff/recovery, bounded RPM, partial errors, truncated ACK cleanup, allowed types");
+ request_clear();
+ assert(a->rpm_unsupported);
+ bacnet_client_set_rpm_max(50);assert(a->rpm_limit==1);
+ b=device(400,80);b->rpm_limit=1;b->rpm_confirmed=true;b->max_apdu=1460;
+ bacnet_client_set_rpm_max(60);assert(b->rpm_limit==0 && a->rpm_limit==1);
+ assert(schedule_values(b,clock_ms));assert(g_request.batch_count==60);request_clear();
+ bacnet_client_set_rpm_max(100);b->point_cursor=0;
+ assert(schedule_values(b,clock_ms));assert(g_request.batch_count<=73 && g_request.batch_count>60);request_clear();
+ bacnet_client_set_rpm_max(5);assert(schedule_values(b,clock_ms));assert(g_request.batch_count==5);request_clear();
+ bacnet_client_set_rpm_max(1);assert(schedule_values(b,clock_ms));assert(g_request.kind==REQ_POINT_PRESENT_VALUE && b->last_poll_count==1 && b->rpm_confirmed);request_clear();
+ bacnet_client_set_rpm_max(0);bacnet_client_set_rpm_max(101);assert(g_rpm_batch_max==1);
+ device_table_cleanup();puts("PASS: fair polling, errors, live RPM limits, APDU bounds, unsupported-service fallback and forced single reads");
 }
 

@@ -38,3 +38,12 @@ result = service:POST_TYPE_config()
 assert(result.ok and #values.controller_license == 2400 and commits == 2)
 assert(result.data.controller_license == nil)
 print("PASS: license redaction/preservation, long credentials, controller validation, TLS pair validation, port bounds")
+for _,v in ipairs({"0","101","1.5","bad"}) do
+    service.arguments={data={rpm_batch_max=v}}
+    assert(not service:POST_TYPE_config().ok)
+end
+for _,v in ipairs({"1","30","100"}) do
+    service.arguments={data={rpm_batch_max=v}}
+    assert(service:POST_TYPE_config().ok and values.rpm_batch_max==v)
+end
+print("PASS: RPM configuration limits and persistence")

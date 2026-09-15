@@ -35,7 +35,7 @@
         <tlt-switch v-else-if="field.type === 'switch'" :id="'gk-cfg-' + field.key"
                     :model-value="config[field.key] === '1'"
                     @update:model-value="config[field.key] = $event ? '1' : '0'" />
-        <input v-else :id="'gk-cfg-' + field.key" :type="field.type === 'password' ? 'password' : 'text'" v-model="config[field.key]"
+        <input v-else :id="'gk-cfg-' + field.key" :type="field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'" :min="field.type === 'number' ? 1 : undefined" :max="field.type === 'number' ? 100 : undefined" v-model="config[field.key]"
                :autocomplete="field.type === 'password' ? 'new-password' : 'off'"
                style="min-width:200px;padding:8px 10px;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:transparent;color:inherit;" />
       </div>
@@ -105,6 +105,7 @@ export default {
         controller_license: '',
         controller_license_configured: false,
         topic_root: '',
+        rpm_batch_max: '30',
         poll_ms: '',
         discovery_ms: '',
         max_age_sec: '',
@@ -118,6 +119,7 @@ export default {
       return (this.status.deviceDetails || []).map(d => ({ ...d,
         name: d.name || String(d.id),
         state: this.status.running ? d.state : 'unknown',
+        pollModeText: this.$t(({multiple:'ReadMultiple', single_configured:'Single read (configured)', single_unsupported:'Single read (RPM unsupported)', single_fallback:'Single read (fallback)', pending:'Not yet confirmed'})[d.pollMode] || 'Not yet confirmed'),
         lastPollText: d.lastPollMode === 'multiple' ? `ReadMultiple (${d.lastPollCount})` : d.lastPollMode === 'single' ? this.$t('Single read (1)') : '-',
         rpmLimitText: d.rpmBatch === 1 ? this.$t('Single read') : d.rpmBatch || '-',
         lastResponseText: d.lastResponse ? new Date(d.lastResponse * 1000).toLocaleString() : '-',
@@ -129,6 +131,7 @@ export default {
         { dataIndex: 'name', title: this.$t('Name') },
         { dataIndex: 'state', title: this.$t('Status') },
         { dataIndex: 'points', title: this.$t('Known points') },
+        { dataIndex: 'pollModeText', title: this.$t('Read mode') },
         { dataIndex: 'lastPollText', title: this.$t('Last value request') },
         { dataIndex: 'rpmLimitText', title: this.$t('RPM limit') },
         { dataIndex: 'lastResponseText', title: this.$t('Last response') },
@@ -143,7 +146,6 @@ export default {
         { label: this.$t('MQTT'), value: this.status.mqttConnected ? this.$t('Connected') : this.$t('Disconnected'), dot: this.status.mqttConnected ? 'ok' : 'bad' },
         { label: this.$t('BACnet devices'), value: this.status.devices },
         { label: this.$t('BACnet points'), value: this.status.points },
-        { label: this.$t('Maximum points per ReadMultiple'), value: this.status.rpmBatchMax || '-' },
         { label: this.$t('MQTT broker'), value: `${this.status.mqttHost || '-'}:${this.status.mqttPort || '-'}` },
         { label: this.$t('MQTT TLS'), value: this.status.mqttTls ? this.$t('Enabled') : this.$t('Disabled') },
         { label: this.$t('MQTT messages sent (QoS 0)'), value: this.status.mqttSent || 0 },
@@ -168,6 +170,7 @@ export default {
         { key: 'controller_id', label: this.$t('Controller ID'), type: 'text' },
         { key: 'controller_license', label: this.$t('Controller license'), type: 'password' },
         { key: 'topic_root', label: this.$t('Topic root'), type: 'text' },
+        { key: 'rpm_batch_max', label: this.$t('Maximum points per ReadMultiple (1-100; 1 = single read)'), type: 'number' },
         { key: 'poll_ms', label: this.$t('Poll interval (ms)'), type: 'text' },
         { key: 'discovery_ms', label: this.$t('Discovery interval (ms)'), type: 'text' },
         { key: 'max_age_sec', label: this.$t('Maximum publish age (s)'), type: 'text' },
@@ -273,7 +276,7 @@ export default {
     async saveConfig() {
       this.saveMessage = '';
       try {
-        const response = await this.$axios.post('/api/gk_bacnet_mqtt/config/config', { data: this.config });
+        const response = await this.$axios.post('/api/gk_bacnet_mqtt/config/config', { data: { ...this.config, rpm_batch_max: String(this.config.rpm_batch_max) } });
         const data = this.findPayload(response, ['mqtt_host', 'enabled']);
         if (!data) throw new Error('Invalid configuration response');
         this.config = Object.assign({}, this.config, data);

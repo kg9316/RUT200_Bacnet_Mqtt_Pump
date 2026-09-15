@@ -11,7 +11,8 @@
 
 #define MAX_DEVICES            500
 #define MAX_POINTS_PER_DEVICE 10000
-#define RPM_BATCH_MAX 30
+#define RPM_BATCH_MAX 100
+#define RPM_BATCH_DEFAULT 30
 
 #define NAME_LEN                96
 #define DESC_LEN               192
@@ -87,6 +88,8 @@ typedef struct {
     uint8_t state; /* 0 unknown, 1 online, 2 offline */
     uint8_t failures;
     uint8_t backoff;
+    bool rpm_unsupported;
+    bool rpm_confirmed;
     uint8_t rpm_limit; /* 0 = not yet sized, 1 = single reads */
     uint8_t last_poll_count; /* Last transmitted value request: 0 none, 1 RP, >1 RPM. */
     uint8_t phase;
@@ -124,6 +127,7 @@ extern char g_mqtt_host[128];
 extern int g_mqtt_port;
 extern char g_topic_root[128];
 extern unsigned g_poll_ms;
+extern unsigned g_rpm_batch_max;
 extern unsigned g_discovery_ms;
 extern unsigned g_max_age_sec;
 extern unsigned g_rp_timeout_ms;

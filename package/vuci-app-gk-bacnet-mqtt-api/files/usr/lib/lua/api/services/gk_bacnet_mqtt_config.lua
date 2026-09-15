@@ -3,13 +3,14 @@ local uci = require("uci")
 local Service = FunctionService:new()
 local OPTIONS = {
     "enabled", "bacnet_interface", "mqtt_host", "mqtt_port", "topic_root",
-    "poll_ms", "discovery_ms", "max_age_sec", "mqtt_mode", "mqtt_tls",
+    "rpm_batch_max", "poll_ms", "discovery_ms", "max_age_sec", "mqtt_mode", "mqtt_tls",
     "mqtt_ca_file", "mqtt_cert_file", "mqtt_key_file", "controller_id",
 }
 
 local function public_config(values)
     local data = {}
     for _, key in ipairs(OPTIONS) do data[key] = values[key] end
+    data.rpm_batch_max = values.rpm_batch_max or "30"
     data.controller_license_configured = (values.controller_license or "") ~= ""
     return data
 end
@@ -20,6 +21,7 @@ function Service:GET_TYPE_config()
 end
 
 local function validate(values)
+    values.rpm_batch_max = values.rpm_batch_max or "30"
     local mode = values.mqtt_mode or "generic"
     if mode ~= "generic" and mode ~= "gk_cloud" then return "Invalid MQTT mode" end
     for _, key in ipairs({"enabled", "mqtt_tls"}) do
@@ -27,7 +29,7 @@ local function validate(values)
             return "Invalid switch value"
         end
     end
-    for key, limits in pairs({mqtt_port={1,65535}, poll_ms={100,3600000}, discovery_ms={100,3600000}, max_age_sec={1,86400}}) do
+    for key, limits in pairs({rpm_batch_max={1,100}, mqtt_port={1,65535}, poll_ms={100,3600000}, discovery_ms={100,3600000}, max_age_sec={1,86400}}) do
         local n = tonumber(values[key])
         if not n or n % 1 ~= 0 or n < limits[1] or n > limits[2] then return "Invalid " .. key end
     end

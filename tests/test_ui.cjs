@@ -11,6 +11,12 @@ for (const [name, getter] of Object.entries(component.computed)) {
   Object.defineProperty(page, name, { get: () => getter.call(page) });
 }
 const fields = () => component.computed.configFields.call(page).map(f => f.key);
+assert(fields().includes('rpm_batch_max'));
+assert(!page.statusRows.some(r=>r.label==='Maximum points per ReadMultiple'));
+page.status.deviceDetails=[{id:1,pollMode:'multiple',lastPollMode:'single',lastPollCount:1}];
+assert.equal(page.deviceRows[0].pollModeText,'ReadMultiple');
+assert.equal(page.deviceRows[0].lastPollText,'Single read (1)');
+page.config.rpm_batch_max=50;
 assert(fields().includes('mqtt_host') && !fields().includes('controller_license'));
 page.config.mqtt_mode = 'gk_cloud';
 assert(!fields().includes('mqtt_host') && !fields().includes('mqtt_tls'));
@@ -24,6 +30,7 @@ page.$axios = { post: async (url, body) => {
 (async () => {
   await page.saveConfig();
   assert.equal(posted.data.controller_license, 'private-license');
+  assert.equal(posted.data.rpm_batch_max, '50');
   assert.equal(page.config.controller_license, '');
   assert.equal(page.saveError, false);
   page.$axios.post = async () => ({ data: { error: 'save failed' } });

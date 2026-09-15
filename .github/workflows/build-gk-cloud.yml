@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 49: persistent device names and actual per-device poll size.
+# Release 50: live configurable RPM maximum and stable device read mode.
 
 on:
   workflow_dispatch:

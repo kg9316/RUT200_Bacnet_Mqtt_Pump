@@ -33,6 +33,9 @@ void status_write_now(void)
         NUM(row,"id",d->device_id); STR(row,"name",d->name);
         NUM(row,"points",d->point_count); STR(row,"state",d->state==1?"online":d->state==2?"offline":"unknown");
         NUM(row,"lastResponse",d->last_response); NUM(row,"rpmBatch",d->rpm_limit);
+        const char *mode = g_rpm_batch_max==1 ? "single_configured" : d->rpm_unsupported ? "single_unsupported" :
+            d->rpm_limit==1 ? "single_fallback" : d->rpm_confirmed ? "multiple" : "pending";
+        STR(row,"pollMode",mode);
         NUM(row,"lastPollCount",d->last_poll_count);
         STR(row,"lastPollMode",d->last_poll_count>1?"multiple":d->last_poll_count==1?"single":"unknown");
         tag_registry_set_device_name(d->device_id,d->name);
@@ -50,7 +53,7 @@ void status_write_now(void)
     json_object_object_add(root,"deviceDetails",devices);
     BOOL(root,"running",true); BOOL(root,"mqttConnected",mqtt_client_is_connected());
     NUM(root,"devices",device_count()); NUM(root,"points",count);
-    NUM(root,"rpmBatchMax",RPM_BATCH_MAX);
+    NUM(root,"rpmBatchMax",g_rpm_batch_max);
     STR(root,"mqttHost",g_mqtt_host); NUM(root,"mqttPort",g_mqtt_port);
     BOOL(root,"mqttTls",g_mqtt_settings.tls); STR(root,"mqttMode",g_mqtt_settings.gk_cloud ? "gk_cloud":"generic");
     STR(root,"topicRoot",g_topic_root);

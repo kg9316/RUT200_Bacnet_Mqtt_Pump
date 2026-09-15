@@ -69,6 +69,12 @@ static void reload_from_disk(bool initial)
     safe_copy(g_mqtt_host, sizeof(g_mqtt_host), host);
     g_mqtt_port = port;
     safe_copy(g_topic_root, sizeof(g_topic_root), OPT("topic_root", "bacnet"));
+    const char *rpm_text = OPT("rpm_batch_max", "30");
+    char *rpm_end;
+    unsigned long rpm_max = strtoul(rpm_text, &rpm_end, 10);
+    if (*rpm_text && !*rpm_end && rpm_max >= 1 && rpm_max <= RPM_BATCH_MAX)
+        bacnet_client_set_rpm_max((unsigned)rpm_max);
+    else LOG_ERRORF("invalid RPM maximum; retaining previous limit");
     g_poll_ms = (unsigned)strtoul(OPT("poll_ms", "5000"), NULL, 10);
     g_discovery_ms = (unsigned)strtoul(OPT("discovery_ms", "10000"), NULL, 10);
     g_max_age_sec = (unsigned)strtoul(OPT("max_age_sec", "300"), NULL, 10);

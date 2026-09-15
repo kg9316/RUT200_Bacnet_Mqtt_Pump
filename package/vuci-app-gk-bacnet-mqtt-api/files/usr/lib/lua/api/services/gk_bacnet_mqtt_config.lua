@@ -52,8 +52,34 @@ local function validate(values)
     end
 end
 
+local function import_points(self)
+    local json = require("luci.jsonc")
+    local fs = require("nixio.fs")
+    local dir = "/tmp/gk-bacnet-mqtt-import"
+    local data = self.arguments and self.arguments.data
+    if type(data) ~= "table" or type(data.id) ~= "string" or #data.id > 64 or type(data.document) ~= "table" then
+        return self:ResponseError("Invalid import request")
+    end
+    local text = json.stringify({id=data.id,document=data.document})
+    if not text or #text > 2*1024*1024 then return self:ResponseError("Maximum upload size is 2 MB") end
+    if not fs.mkdir(dir .. "/busy","700") then return self:ResponseError("Import busy or gateway is not running") end
+    local f = io.open(dir .. "/request.tmp","w")
+    if not f then fs.rmdir(dir .. "/busy");return self:ResponseError("Unable to queue import") end
+    local ok=f:write(text)
+    local closed=f:close()
+    if not ok or not closed or not os.rename(dir .. "/request.tmp",dir .. "/request.json") then
+        os.remove(dir .. "/request.tmp");fs.rmdir(dir .. "/busy")
+        return self:ResponseError("Unable to queue import")
+    end
+    return self:ResponseOK({queued=true,id=data.id})
+end
+
+
 local function do_put(self)
     local body = self.arguments and self.arguments.data
+    if type(body) == "table" and body.document ~= nil then
+        return import_points(self)
+    end
     if type(body) ~= "table" then return self:ResponseError("No data in request") end
     local cursor = uci.cursor()
     local values = cursor:get_all("gk_bacnet_mqtt", "main") or {}
@@ -88,33 +114,4 @@ Service.POST = do_put
 Service.POST_TYPE = do_put
 Service.PUT_TYPE_config = do_put
 
-function Service:POST_TYPE_import()
-    local json = require("luci.jsonc")
-    local fs = require("nixio.fs")
-    local dir = "/tmp/gk-bacnet-mqtt-import"
-    local data = self.arguments and self.arguments.data
-    if type(data) ~= "table" or type(data.id) ~= "string" or #data.id > 64 or type(data.document) ~= "table" then
-        return self:ResponseError("Invalid import request")
-    end
-    local text = json.stringify({id=data.id,document=data.document})
-    if not text or #text > 2*1024*1024 then return self:ResponseError("Maximum upload size is 2 MB") end
-    if not fs.mkdir(dir .. "/busy",448) then return self:ResponseError("Import busy or gateway is not running") end
-    local f = io.open(dir .. "/request.tmp","w")
-    if not f then fs.rmdir(dir .. "/busy");return self:ResponseError("Unable to queue import") end
-    local ok=f:write(text)
-    local closed=f:close()
-    if not ok or not closed or not os.rename(dir .. "/request.tmp",dir .. "/request.json") then
-        os.remove(dir .. "/request.tmp");fs.rmdir(dir .. "/busy")
-        return self:ResponseError("Unable to queue import")
-    end
-    return self:ResponseOK({queued=true,id=data.id})
-end
-
-function Service:GET_TYPE_import()
-    local json = require("luci.jsonc")
-    local f=io.open("/tmp/gk-bacnet-mqtt-import/result.json","r")
-    if not f then return self:ResponseOK({pending=true}) end
-    local text=f:read("*a");f:close()
-    return self:ResponseOK(json.parse(text) or {pending=true})
-end
 return Service

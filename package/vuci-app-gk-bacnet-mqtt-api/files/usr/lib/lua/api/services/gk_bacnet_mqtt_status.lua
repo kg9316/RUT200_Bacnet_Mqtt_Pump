@@ -22,7 +22,10 @@ function Service:GET_TYPE_status()
     local control = read_file("/usr/local/lib/opkg/info/vuci-app-gk-bacnet-mqtt-ui.control")
         or read_file("/usr/lib/opkg/info/vuci-app-gk-bacnet-mqtt-ui.control") or ""
     snapshot.packageVersion = control:match("Version:%s*([^\r\n]+)") or "unknown"
-    return self:ResponseOK({ running = snapshot.running == true, status = json.stringify(snapshot) })
+    local import_raw = read_file("/tmp/gk-bacnet-mqtt-import/result.json")
+    local imported = import_raw and json.parse(import_raw) or {}
+    return self:ResponseOK({ running = snapshot.running == true, status = json.stringify(snapshot),
+        id=imported.id, ok=imported.ok, error=imported.error, added=imported.added, updated=imported.updated })
 end
 
 function Service:GET_TYPE_points()

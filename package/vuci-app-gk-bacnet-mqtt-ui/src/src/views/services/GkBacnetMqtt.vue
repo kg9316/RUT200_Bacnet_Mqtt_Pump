@@ -227,12 +227,12 @@ export default {
       this.importBusy = true; this.importMessage = this.$t('Importing...');
       const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       try {
-        const response = await this.$axios.post('/api/gk_bacnet_mqtt/config/import', {data:{id,document:this.importDocument}});
+        const response = await this.$axios.post('/api/gk_bacnet_mqtt/config/config', {data:{id,document:this.importDocument}});
         const queued = this.findPayload(response, ['queued']);
         if (!queued || !queued.queued) throw new Error(this.findPayload(response,['error'])?.error || 'Import could not be queued');
         for (let i=0; i<30; i++) {
           await new Promise(resolve => setTimeout(resolve, 1000));
-          const response = await this.$axios.get('/api/gk_bacnet_mqtt/config/import');
+          const response = await this.$axios.get('/api/gk_bacnet_mqtt/status/status');
           const result = this.findPayload(response, ['id']);
           if (!result || result.id !== id) continue;
           if (!result.ok) throw new Error(result.error || 'Import rejected');

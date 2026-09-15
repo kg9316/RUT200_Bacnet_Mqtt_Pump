@@ -118,6 +118,8 @@ export default {
       return (this.status.deviceDetails || []).map(d => ({ ...d,
         name: d.name || String(d.id),
         state: this.status.running ? d.state : 'unknown',
+        lastPollText: d.lastPollMode === 'multiple' ? `ReadMultiple (${d.lastPollCount})` : d.lastPollMode === 'single' ? this.$t('Single read (1)') : '-',
+        rpmLimitText: d.rpmBatch === 1 ? this.$t('Single read') : d.rpmBatch || '-',
         lastResponseText: d.lastResponse ? new Date(d.lastResponse * 1000).toLocaleString() : '-',
       }));
     },
@@ -127,6 +129,8 @@ export default {
         { dataIndex: 'name', title: this.$t('Name') },
         { dataIndex: 'state', title: this.$t('Status') },
         { dataIndex: 'points', title: this.$t('Known points') },
+        { dataIndex: 'lastPollText', title: this.$t('Last value request') },
+        { dataIndex: 'rpmLimitText', title: this.$t('RPM limit') },
         { dataIndex: 'lastResponseText', title: this.$t('Last response') },
         { dataIndex: 'retryIn', title: this.$t('Retry in seconds') },
       ];
@@ -139,6 +143,7 @@ export default {
         { label: this.$t('MQTT'), value: this.status.mqttConnected ? this.$t('Connected') : this.$t('Disconnected'), dot: this.status.mqttConnected ? 'ok' : 'bad' },
         { label: this.$t('BACnet devices'), value: this.status.devices },
         { label: this.$t('BACnet points'), value: this.status.points },
+        { label: this.$t('Maximum points per ReadMultiple'), value: this.status.rpmBatchMax || '-' },
         { label: this.$t('MQTT broker'), value: `${this.status.mqttHost || '-'}:${this.status.mqttPort || '-'}` },
         { label: this.$t('MQTT TLS'), value: this.status.mqttTls ? this.$t('Enabled') : this.$t('Disabled') },
         { label: this.$t('MQTT messages sent (QoS 0)'), value: this.status.mqttSent || 0 },

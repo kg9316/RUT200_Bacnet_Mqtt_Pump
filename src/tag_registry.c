@@ -54,6 +54,15 @@ int tag_registry_init(void)
     seen = json_object_new_object();
     if (!seen) goto invalid;
     json_object_object_foreach(registry, key, value) {
+        if (!strcmp(key, "_dn")) {
+            if (!json_object_is_type(value, json_type_object)) { json_object_put(seen); goto invalid; }
+            json_object_object_foreach(value, device_key, name) {
+                unsigned device_id; char extra;
+                if (sscanf(device_key, "%u%c", &device_id, &extra) != 1 || device_id > 4194303 ||
+                    !json_object_is_type(name, json_type_string)) { json_object_put(seen); goto invalid; }
+            }
+            continue;
+        }
         struct json_object *duplicate;
         const char *id = entry_tag(value);
         (void)key;
@@ -148,7 +157,8 @@ const char *tag_registry_get(uint32_t device, unsigned type, uint32_t instance)
              b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
     json_object_object_foreach(registry, existing, item) {
         (void)existing;
-        if (strcmp(entry_tag(item), id) == 0) return NULL;
+        const char *existing_tag = entry_tag(item);
+        if (existing_tag && strcmp(existing_tag, id) == 0) return NULL;
     }
     value = json_object_new_string(id);
     if (!value) return NULL;
@@ -194,6 +204,24 @@ void tag_registry_set_metadata(uint32_t device, unsigned type, uint32_t instance
     }
 }
 
+void tag_registry_set_device_name(uint32_t device, const char *name)
+{
+    struct json_object *names, *old;
+    char key[16];
+    if (!registry || !name || !*name) return;
+    if (!json_object_object_get_ex(registry, "_dn", &names)) {
+        names = json_object_new_object();
+        if (!names) return;
+        json_object_object_add(registry, "_dn", names);
+    }
+    snprintf(key, sizeof(key), "%lu", (unsigned long)device);
+    if (json_object_object_get_ex(names, key, &old) && !strcmp(json_object_get_string(old), name)) return;
+    struct json_object *value = json_object_new_string(name);
+    if (!value) return;
+    json_object_object_add(names, key, value);
+    metadata_dirty = true;
+}
+
 void tag_registry_flush_metadata(void)
 {
     uint64_t now = monotonic_ms();
@@ -206,6 +234,15 @@ void tag_registry_flush_metadata(void)
 void tag_registry_restore_devices(void)
 {
     if (!registry) return;
+    struct json_object *names;
+    if (json_object_object_get_ex(registry, "_dn", &names)) {
+        json_object_object_foreach(names, key, name) {
+            unsigned id;
+            if (sscanf(key, "%u", &id) != 1) continue;
+            DEVICE_STATE *d = get_or_create_device(id);
+            if (d) safe_copy(d->name, sizeof(d->name), json_object_get_string(name));
+        }
+    }
     json_object_object_foreach(registry, key, entry) {
         unsigned di, ot, oi; char extra;
         if (sscanf(key, "%u:%u:%u%c", &di, &ot, &oi, &extra) != 3 ||

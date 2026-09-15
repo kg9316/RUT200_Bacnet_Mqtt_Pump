@@ -85,6 +85,8 @@ static void test_guids(void)
     assert(strcmp(other, tag_registry_get(100, 1, 1)) == 0);
     /* Upgrade a real legacy string entry, retain its UUID after reopening. */
     tag_registry_set_metadata(100, 0, 1, "Room A", "deg C", "Local metadata");
+    tag_registry_set_device_name(100, "Controller A");
+    tag_registry_set_device_name(200, "Empty controller");
     assert(strcmp(first, tag_registry_get(100, 0, 1)) == 0);
     tag_registry_flush_metadata();
     assert(!metadata_dirty);
@@ -101,6 +103,14 @@ static void test_guids(void)
     assert(strcmp(first, tag_registry_get(100, 0, 1)) == 0);
     assert(strcmp(other, tag_registry_get(100, 1, 1)) == 0);
     struct json_object *entry, *field;
+    tag_registry_restore_devices();
+    assert(!strcmp(find_device(100)->name, "Controller A"));
+    assert(!strcmp(find_device(200)->name, "Empty controller"));
+    assert(find_device(200)->state == 0 && find_device(200)->point_count == 0);
+    tag_registry_set_device_name(100, "Controller A");
+    assert(!metadata_dirty);
+    assert(tag_registry_get(200, 0, 1)); /* New GUID with device map present. */
+    device_table_cleanup();
     assert(json_object_object_get_ex(registry, "100:0:1", &entry));
     assert(json_object_object_get_ex(entry, "n", &field));
     assert(strcmp(json_object_get_string(field), "Room A") == 0);

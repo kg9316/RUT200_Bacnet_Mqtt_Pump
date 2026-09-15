@@ -88,6 +88,7 @@ typedef struct {
     uint8_t failures;
     uint8_t backoff;
     uint8_t rpm_limit; /* 0 = not yet sized, 1 = single reads */
+    uint8_t last_poll_count; /* Last transmitted value request: 0 none, 1 RP, >1 RPM. */
     uint8_t phase;
 
 } DEVICE_STATE;

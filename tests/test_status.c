@@ -14,10 +14,12 @@ bool mqtt_client_is_connected(void) { return true; }
 const char *gk_cloud_last_error(void) { return "DNS failure"; }
 void tag_registry_set_metadata(uint32_t d,unsigned t,uint32_t i,const char *n,const char *u,const char *desc) { (void)d;(void)t;(void)i;(void)n;(void)u;(void)desc; }
 void tag_registry_flush_metadata(void) {}
+void tag_registry_set_device_name(uint32_t d,const char *n) { (void)d; (void)n; }
 uint64_t monotonic_ms(void) { return 0; }
 time_t unix_time_now(void) { return 1789036121; }
 int main(void) {
     g_devices[0].used=true; g_devices[0].device_id=458967; g_devices[0].point_count=2;
+    g_devices[0].last_poll_count=12;
     g_devices[0].points=calloc(2,sizeof(POINT_STATE));
     assert(g_devices[0].points);
     POINT_STATE *p=&g_devices[0].points[0];
@@ -31,6 +33,9 @@ int main(void) {
     assert(root && !json_object_object_get_ex(root,"pointDetails",&rows));
     assert(json_object_object_get_ex(root,"deviceDetails",&rows) && json_object_array_length(rows)==1);
     row=json_object_array_get_idx(rows,0);
+    assert(json_object_object_get_ex(root,"rpmBatchMax",&v) && json_object_get_int(v)==30);
+    assert(json_object_object_get_ex(row,"lastPollCount",&v) && json_object_get_int(v)==12);
+    assert(json_object_object_get_ex(row,"lastPollMode",&v) && !strcmp(json_object_get_string(v),"multiple"));
     assert(json_object_object_get_ex(row,"state",&v) && !strcmp(json_object_get_string(v),"unknown"));
     assert(!strstr(json_object_to_json_string(root),"21.5"));
     assert(json_object_object_get_ex(root,"points",&v) && json_object_get_int(v)==2);

@@ -3,6 +3,7 @@
 #include "gateway.h"
 int tag_registry_init(void);
 void tag_registry_restore_devices(void);
+void tag_registry_set_device_name(uint32_t device, const char *name);
 void tag_registry_cleanup(void);
 const char *tag_registry_lookup(uint32_t device, unsigned type, uint32_t instance);
 const char *tag_registry_get(uint32_t device, unsigned type, uint32_t instance);

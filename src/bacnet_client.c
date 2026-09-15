@@ -594,7 +594,7 @@ static bool schedule_poll(DEVICE_STATE *device,
     if (!point->metadata_complete || point->next_poll_ms > now)
         return false;
 
-    return send_read_property(REQ_POINT_PRESENT_VALUE,
+    bool sent = send_read_property(REQ_POINT_PRESENT_VALUE,
                               device,
                               point,
                               point->object_type,
@@ -602,6 +602,8 @@ static bool schedule_poll(DEVICE_STATE *device,
                               PROP_PRESENT_VALUE,
                               BACNET_ARRAY_ALL,
                               0);
+    if (sent) device->last_poll_count = 1;
+    return sent;
 }
 
 static bool schedule_values(DEVICE_STATE *d, uint64_t now)
@@ -639,6 +641,7 @@ static bool schedule_values(DEVICE_STATE *d, uint64_t now)
     g_request.kind=REQ_POINT_MULTIPLE;g_request.device=d;g_request.sent_ms=now;g_request.batch_count=count;
     memcpy(g_request.batch,selected,count*sizeof(selected[0]));
     if(!d->rpm_limit)d->rpm_limit=limit;
+    d->last_poll_count=count;
     return true;
 }
 

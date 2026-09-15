@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 48: fair BACnet scheduler, RPM and device availability.
+# Release 49: persistent device names and actual per-device poll size.
 
 on:
   workflow_dispatch:

@@ -36,6 +36,15 @@ page.$axios = { post: async (url, body) => {
   return { data: { enabled: '1', mqtt_host: 'localhost', controller_license_configured: true } };
 }};
 (async () => {
+  const log = 'daemon.info gk-bacnet-mqtt[1]: MQTT connected\n' +
+    'daemon.info gk-bacnet-mqtt[1]: BACnet started\n' +
+    'daemon.info gk-bacnet-mqtt[1]: NEW DEVICE DEV=42\n' +
+    'daemon.info gk-bacnet-mqtt[1]: GK access token renewed';
+  page.$axios.get = async () => ({data:{log}});
+  page.logMode='bacnet';await page.loadLog();
+  assert(page.log.includes('BACnet started') && page.log.includes('NEW DEVICE'));
+  assert(!page.log.includes('MQTT connected') && !page.log.includes('token renewed'));
+  page.logMode='all';await page.loadLog();assert.equal(page.log,log);
   await page.saveConfig();
   assert.equal(posted.data.controller_license, 'private-license');
   assert.equal(posted.data.rpm_batch_max, '50');

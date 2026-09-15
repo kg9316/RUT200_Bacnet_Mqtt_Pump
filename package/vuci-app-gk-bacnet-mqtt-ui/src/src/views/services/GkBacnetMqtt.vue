@@ -67,7 +67,7 @@
 
     <tlt-card :title="$t('Gateway log')">
       <tlt-select id="gk-log-filter" v-model="logMode" :readonly="false" style="width:260px;"
-                  :data-source="[{ key: 'mqtt', value: $t('MQTT and authentication') }, { key: 'all', value: $t('All gateway events') }]"
+                  :data-source="[{ key: 'all', value: $t('All gateway events') }, { key: 'bacnet', value: $t('BACnet') }, { key: 'mqtt', value: $t('MQTT and authentication') }]"
                   @update:model-value="loadLog" />
       <pre style="min-height:180px;max-height:420px;margin:0;padding:12px;overflow:auto;border:1px solid rgba(127,127,127,.25);border-radius:6px;white-space:pre-wrap;word-break:break-word;font-family:monospace;font-size:12px;line-height:1.45;">{{ log || '-' }}</pre>
       <div style="margin-top:14px;display:flex;gap:12px;">
@@ -348,7 +348,12 @@ export default {
         const response = await this.$axios.get('/api/gk_bacnet_mqtt/status/' + (mode === 'mqtt' ? 'mqtt_log' : 'log'));
         if (mode !== this.logMode || generation !== this.logGeneration || this.logClearing) return;
         const data = this.findPayload(response, ['log']) || {};
-        this.log = data.log || '';
+        const text = data.log || '';
+        this.log = mode === 'bacnet' ? text.split('\n').filter(line => {
+          // Match the message, not the process name (which always contains BACnet).
+          const message = line.match(/gk-bacnet-mqtt(?:\[\d+\])?:\s*(.*)$/);
+          return message && /\bBACnet\b|\bDEVICE\b|\bDEV=|\bRP ACK\b/i.test(message[1]);
+        }).join('\n') : text;
       } catch (error) {
         this.log = this.$t('Unable to read gateway log');
       }

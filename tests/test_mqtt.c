@@ -99,6 +99,13 @@ int main(void)
     mqtt_client_reconnect();
     mqtt_client_loop();
     assert(mqtt_client_is_connected() && connect_calls == 3);
+    unsigned connections_before=connect_calls;
+    g_enabled=false;
+    mqtt_client_loop();
+    assert(!mqtt_client_is_connected() && !g_mosq && !test_token);
+    mqtt_client_loop();assert(connect_calls==connections_before);
+    g_enabled=true;
+    mqtt_client_loop();assert(mqtt_client_is_connected() && connect_calls==connections_before+1);
     mqtt_client_cleanup();
     puts("PASS: verified TLS, GK identity/password, token renewal reconnect, expiry disconnect, no plaintext fallback, generic mode");
     return 0;

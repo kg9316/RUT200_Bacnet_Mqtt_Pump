@@ -1,4 +1,5 @@
 #include "status.h"
+#include "bacnet_client.h"
 #include "device_table.h"
 #include "gateway.h"
 #include "mqtt_client.h"
@@ -45,7 +46,15 @@ void status_write_now(void)
     }
     tag_registry_flush_metadata();
     json_object_object_add(root,"deviceDetails",devices);
-    BOOL(root,"running",true); BOOL(root,"mqttConnected",mqtt_client_is_connected());
+    BOOL(root,"running",true); BOOL(root,"enabled",g_enabled);
+    BOOL(root,"mqttConnected",g_enabled && mqtt_client_is_connected());
+    BOOL(root,"bacnetActive",g_enabled && g_bacnet_active);
+    STR(root,"bacnetState",!g_enabled?"disabled":!g_bacnet_active?"error":g_bacnet_last_reply?"running":"discovering");
+    STR(root,"bacnetInterface",g_bacnet_interface);
+    STR(root,"bacnetLastError",g_bacnet_error);
+    NUM(root,"bacnetRequests",g_bacnet_reads); NUM(root,"bacnetReplies",g_bacnet_replies);
+    NUM(root,"bacnetTimeouts",g_bacnet_timeouts); NUM(root,"bacnetErrors",g_bacnet_errors);
+    NUM(root,"bacnetLastReply",g_bacnet_last_reply);
     NUM(root,"devices",device_count()); NUM(root,"points",count);
     NUM(root,"rpmBatchMax",g_rpm_batch_max);
     STR(root,"mqttHost",g_mqtt_host); NUM(root,"mqttPort",g_mqtt_port);

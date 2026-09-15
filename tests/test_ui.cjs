@@ -11,6 +11,14 @@ for (const [name, getter] of Object.entries(component.computed)) {
   Object.defineProperty(page, name, { get: () => getter.call(page) });
 }
 const fields = () => component.computed.configFields.call(page).map(f => f.key);
+assert.equal(page.logMode,'all');
+assert(!page.deviceColumns.some(c=>c.dataIndex==='retryIn'));
+page.status.running=true;page.status.enabled=false;page.status.bacnetState='disabled';
+assert.equal(page.statusRows.find(r=>r.label==='BACnet').value,'Disabled');
+assert.equal(page.statusRows.find(r=>r.label==='MQTT').value,'Disabled');
+assert.equal(page.statusRows.find(r=>r.label==='Service').value,'Disabled');
+page.status.enabled=true;page.status.bacnetActive=true;page.status.bacnetState='running';
+assert.equal(page.statusRows.find(r=>r.label==='BACnet').value,'Running');
 assert(fields().includes('rpm_batch_max'));
 assert(!page.statusRows.some(r=>r.label==='Maximum points per ReadMultiple'));
 page.status.deviceDetails=[{id:1,pollMode:'multiple',lastPollMode:'single',lastPollCount:1}];

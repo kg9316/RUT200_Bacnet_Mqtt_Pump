@@ -74,7 +74,7 @@ static void mqtt_publish_raw(const char *topic, const char *payload, bool retain
 {
     int rc;
 
-    if (!g_mosq || !g_mqtt_connected)
+    if (!g_enabled || !g_mosq || !g_mqtt_connected)
         return;
 
     rc = mosquitto_publish(g_mosq, NULL, topic, (int)strlen(payload), payload, 0, retain);
@@ -294,6 +294,19 @@ void mqtt_client_loop(void)
 {
     uint64_t now = monotonic_ms();
     int rc;
+    static bool paused;
+    if (!g_enabled) {
+        if (!paused) {
+            destroy_client();
+            gk_cloud_reset();
+            next_reconnect_ms = 0;
+            LOG_INFOF("MQTT disabled; connection and authentication stopped");
+        }
+        paused = true;
+        return;
+    }
+    if (paused) LOG_INFOF("MQTT enabled; connecting");
+    paused = false;
     gk_cloud_loop();
     if (g_mqtt_settings.gk_cloud) {
         if (!gk_cloud_token()) { destroy_client(); return; }

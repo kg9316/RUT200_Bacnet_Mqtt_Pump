@@ -4,6 +4,10 @@
 #define STATUS_FILE "test-status.json"
 #include "../src/status.c"
 DEVICE_STATE g_devices[MAX_DEVICES];
+bool g_enabled=true,g_bacnet_active=true;
+unsigned long g_bacnet_reads=10,g_bacnet_replies=9,g_bacnet_timeouts=1,g_bacnet_errors=0;
+time_t g_bacnet_last_reply=1789036100;
+char g_bacnet_error[192]="",g_bacnet_interface[64]="br-lan";
 MQTT_SETTINGS g_mqtt_settings;
 MQTT_DIAGNOSTICS g_mqtt_diagnostics;
 char g_mqtt_host[128]="broker\"host", g_topic_root[128]="test\\root";
@@ -42,6 +46,14 @@ int main(void) {
     assert(json_object_object_get_ex(root,"points",&v) && json_object_get_int(v)==2);
     assert(json_object_object_get_ex(root,"mqttSent",&v) && json_object_get_int(v)==11);
     assert(!strstr(json_object_to_json_string(root),"DO-NOT-EXPORT-SECRET"));
+    assert(json_object_object_get_ex(root,"bacnetState",&v) && !strcmp(json_object_get_string(v),"running"));
+    assert(json_object_object_get_ex(root,"bacnetRequests",&v) && json_object_get_int(v)==10);
+    json_object_put(root);
+    unlink(STATUS_FILE); /* Windows rename does not replace an existing target. */
+    g_enabled=false;status_write_now();root=json_object_from_file(STATUS_FILE);
+    assert(json_object_object_get_ex(root,"bacnetState",&v) && !strcmp(json_object_get_string(v),"disabled"));
+    assert(json_object_object_get_ex(root,"mqttConnected",&v) && !json_object_get_boolean(v));
+    assert(json_object_object_get_ex(root,"bacnetActive",&v) && !json_object_get_boolean(v));
     json_object_put(root); unlink(STATUS_FILE); free(g_devices[0].points);
     puts("PASS: point/GUID mapping, JSON escaping, pending tags, MQTT counters and secret omission");
 }

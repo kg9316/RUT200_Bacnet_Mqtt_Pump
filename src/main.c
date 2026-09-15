@@ -64,25 +64,33 @@ int main(int argc, char **argv)
         LOG_WARNF("MQTT initialization failed rc=%d; continuing, will retry", rc);
     }
 
-    if (bacnet_client_init(g_bacnet_interface) != 0) {
-        LOG_ERRORF("BACnet datalink initialization failed interface=%s", g_bacnet_interface);
-        mqtt_client_cleanup();
-        LOG_CLOSE();
-        return 1;
-    }
-
     if (tag_registry_init() == 0) tag_registry_restore_devices();
+    if (!g_enabled) LOG_INFOF("BACnet disabled; discovery and polling stopped");
     status_write_now();
 
+    uint64_t next_bacnet_start = 0;
+    bool was_enabled = g_enabled;
     while (g_running) {
+        config_reload_if_due();
+        if (g_enabled != was_enabled) {
+            LOG_INFOF("Gateway %s: BACnet and MQTT",g_enabled?"enabled":"disabled");
+            next_bacnet_start = 0;
+            was_enabled = g_enabled;
+        }
         mqtt_client_loop();
-        if (g_enabled)
-            bacnet_client_loop();
-        else
+        if (g_enabled) {
+            if (!g_bacnet_active && monotonic_ms() >= next_bacnet_start) {
+                next_bacnet_start = monotonic_ms()+30000;
+                bacnet_client_init(g_bacnet_interface);
+            }
+            if (g_bacnet_active) bacnet_client_loop();
+            else usleep(20000);
+        } else {
+            if (g_bacnet_active) bacnet_client_cleanup();
             usleep(20000);
+        }
         status_write_if_due();
         tag_registry_import_if_due();
-        config_reload_if_due();
     }
 
     LOG_INFOF("stopping");

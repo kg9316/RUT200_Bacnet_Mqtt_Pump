@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 53: bounded recovery using I-Am, batched GUID persistence and 10000-point capacity.
+# Release 54: unified enable switch, BACnet status and lifecycle logging.
 
 on:
   workflow_dispatch:

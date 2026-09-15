@@ -16,8 +16,8 @@ start_service()
 {
         local enabled bacnet_interface mqtt_host mqtt_port topic_root poll_ms discovery_ms max_age_sec
         config_load gk_bacnet_mqtt
-        config_get_bool enabled main enabled 0
-        [ "$enabled" -eq 1 ] || return 0
+        # Keep the control process alive while disabled: it serves status/imports
+        # and watches Enabled. The daemon closes BACnet and MQTT itself.
         mkdir -p /tmp/gk-bacnet-mqtt-import
         chown root:uhttpd /tmp/gk-bacnet-mqtt-import
         chmod 0770 /tmp/gk-bacnet-mqtt-import

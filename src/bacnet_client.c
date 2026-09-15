@@ -22,6 +22,11 @@
 #include "bacnet/basic/tsm/tsm.h"
 #include "bacnet/basic/service/s_rpm.h"
 
+bool g_bacnet_active;
+unsigned long g_bacnet_reads, g_bacnet_replies, g_bacnet_timeouts, g_bacnet_errors;
+time_t g_bacnet_last_reply;
+char g_bacnet_error[192];
+static uint64_t next_error_log_ms;
 static uint64_t g_next_discovery_ms = 0;
 static uint64_t next_timeout_log_ms;
 static unsigned timeout_count;
@@ -159,9 +164,10 @@ static bool request_matches(BACNET_ADDRESS *src, uint8_t id)
 
 static void device_answered(DEVICE_STATE *d)
 {
-    if (d->state == 2) LOG_INFOF("BACnet device online: device=%lu", (unsigned long)d->device_id);
+    if (d->state != 1) LOG_INFOF("BACnet device online: device=%lu", (unsigned long)d->device_id);
     d->state = 1; d->failures = 0; d->backoff = 0; d->retry_after_ms = 0;
     d->last_seen_ms = monotonic_ms(); d->last_response = unix_time_now();
+    ++g_bacnet_replies; g_bacnet_last_reply = d->last_response; g_bacnet_error[0] = 0;
 }
 
 static void point_failed(POINT_STATE *p)
@@ -200,7 +206,13 @@ static void request_failed(bool timeout)
 {
     DEVICE_STATE *d = g_request.device;
     if (!d) return;
-    if (timeout) device_timed_out(d);
+    if (timeout) { ++g_bacnet_timeouts; device_timed_out(d); }
+    else ++g_bacnet_errors;
+    snprintf(g_bacnet_error,sizeof(g_bacnet_error),"%s: device=%lu request=%u",timeout?"Read timeout":"Read failed",(unsigned long)d->device_id,(unsigned)g_request.kind);
+    if (!timeout && monotonic_ms() >= next_error_log_ms) {
+        LOG_WARNF("BACnet %s (read errors=%lu)",g_bacnet_error,g_bacnet_errors);
+        next_error_log_ms = monotonic_ms()+60000;
+    }
     if (g_request.point) point_failed(g_request.point);
     for (unsigned i=0; i<g_request.batch_count; i++) point_failed(&d->points[g_request.batch[i]]);
     /* A failed group is split on its next turn; no immediate retry monopolizes the channel. */
@@ -267,6 +279,7 @@ static bool send_read_property(REQUEST_KIND kind,
     g_request.device = device;
     g_request.point = point;
     g_request.object_list_index = list_index;
+    ++g_bacnet_reads;
     return true;
 }
 
@@ -715,6 +728,7 @@ static bool schedule_values(DEVICE_STATE *d, uint64_t now)
     memcpy(g_request.batch,selected,count*sizeof(selected[0]));
     if(!d->rpm_limit)d->rpm_limit=limit;
     d->last_poll_count=count;
+    ++g_bacnet_reads;
     return true;
 }
 
@@ -814,8 +828,20 @@ int bacnet_client_init(const char *interface_name)
     apdu_set_abort_handler(gateway_abort_handler);
     apdu_set_reject_handler(gateway_reject_handler);
 
-    if (!datalink_init((char *)interface_name))
+    if (!datalink_init((char *)interface_name)) {
+        datalink_cleanup();
+        g_bacnet_active = false;
+        snprintf(g_bacnet_error,sizeof(g_bacnet_error),"Unable to open interface %s",interface_name);
+        LOG_ERRORF("BACnet start failed: %s",g_bacnet_error);
         return -1;
+    }
+    g_bacnet_active = true; g_bacnet_error[0] = 0; g_bacnet_last_reply = 0;
+    next_recovery_ms = 0;
+    for (size_t i=0;i<MAX_DEVICES;i++) {
+        g_devices[i].state=0; g_devices[i].failures=0; g_devices[i].backoff=0;
+        g_devices[i].retry_after_ms=0; g_devices[i].last_iam_ms=0;
+    }
+    LOG_INFOF("BACnet started on %s; WhoIs discovery every %ums",interface_name,g_discovery_ms);
 
     g_next_discovery_ms = 0;
     return 0;
@@ -829,8 +855,8 @@ int bacnet_client_reinit(const char *interface_name)
      * the process. The device/point table is intentionally left as-is -
      * address_add() already updates-or-creates by device_id, so a fresh
      * WhoIs/I-Am cycle on the new interface reconciles it naturally. */
-    datalink_cleanup();
-    return bacnet_client_init(interface_name);
+    bacnet_client_cleanup();
+    return g_enabled ? bacnet_client_init(interface_name) : 0;
 }
 
 void bacnet_client_loop(void)
@@ -863,7 +889,11 @@ void bacnet_client_loop(void)
 void bacnet_client_cleanup(void)
 {
     request_clear();
-    datalink_cleanup();
+    if (g_bacnet_active) {
+        datalink_cleanup();
+        LOG_INFOF("BACnet stopped");
+    }
+    g_bacnet_active = false;
 }
 
 #endif

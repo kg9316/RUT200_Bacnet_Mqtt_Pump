@@ -8,6 +8,8 @@
 #include "../src/gk_cloud.c"
 
 MQTT_SETTINGS g_mqtt_settings;
+static unsigned reconnects;
+void mqtt_client_reconnect(void) { ++reconnects; }
 static uint64_t test_clock = 100000;
 uint64_t monotonic_ms(void) { return test_clock; }
 uint64_t unix_time_ms(void) { return 1788180633795ULL; }
@@ -240,9 +242,17 @@ static void test_imports(void)
     safe_copy(g_mqtt_settings.controller_id,sizeof(g_mqtt_settings.controller_id),"controller-A");
     const char *raw="{\"100:5:1\":{\"t\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"n\":\"Fan\",\"s\":{\"0\":\"Off\",\"1\":\"On\"}},\"_dn\":{\"100\":\"Controller A\"}}";
     struct json_object *doc=json_tokener_parse(raw);unsigned added,updated;
-    assert(!import_document(doc,&added,&updated) && added==1 && updated==0);
+    /* Discovery may have generated a different, not-yet-published identity. */
+    char discovered[37];safe_copy(discovered,sizeof(discovered),tag_registry_get(100,5,1));
+    assert(strcmp(discovered,"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"));
+    unsigned previous_reconnects=reconnects;
+    assert(!import_document(doc,&added,&updated) && added==0 && updated==1);
+    assert(reconnects==previous_reconnects+1);
+    assert(!strcmp(tag_registry_lookup(100,5,1),"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"));
+    assert(tag_registry_is_durable("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"));
     assert(!strcmp(find_device(100)->name,"Controller A"));
     assert(!import_document(doc,&added,&updated) && added==0 && updated==1);
+    assert(reconnects==previous_reconnects+1); /* No reconnect for an unchanged identity. */
     json_object_put(doc);
     const char *exported="{\"controllerId\":\"controller-A\",\"points\":[{\"di\":100,\"ot\":5,\"oi\":1,\"t\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"n\":\"Fan restored\"}]}";
     doc=json_tokener_parse(exported);assert(!import_document(doc,&added,&updated));json_object_put(doc);
@@ -250,7 +260,6 @@ static void test_imports(void)
     assert(json_object_object_get_ex(registry,"100:5:1",&point));
     assert(json_object_object_get_ex(point,"s",&states)); /* Missing imported fields retain old metadata. */
     const char *bad[]={
-      "{\"100:5:1\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\"}",
       "{\"100:5:2\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\"}",
       "{\"controllerId\":\"wrong-controller\",\"points\":[]}",
       "{\"100:5:2\":{\"t\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\",\"s\":{\"bad\":\"On\"}}}",
@@ -260,6 +269,7 @@ static void test_imports(void)
     for(unsigned i=0;i<sizeof(bad)/sizeof(bad[0]);i++) {
         doc=json_tokener_parse(bad[i]);assert(import_document(doc,&added,&updated));json_object_put(doc);
         assert(!strcmp(before,json_object_to_json_string_ext(registry,JSON_C_TO_STRING_PLAIN)));
+        assert(reconnects==previous_reconnects+1);
     }
     free(before);tag_registry_cleanup();assert(tag_registry_init()==0);
     assert(!strcmp(tag_registry_lookup(100,5,1),"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"));

@@ -63,6 +63,7 @@ static const char *import_entry(struct json_object *entries, const char *address
 static const char *import_document(struct json_object *doc, unsigned *added, unsigned *updated)
 {
     const char *error=NULL;
+    bool identities_changed=false;
     struct json_object *entries=json_object_new_object(), *candidate=NULL, *seen=NULL, *counts=NULL;
     struct json_object *points=NULL,*names=NULL,*controller=NULL;
     *added=*updated=0;
@@ -97,7 +98,7 @@ static const char *import_document(struct json_object *doc, unsigned *added, uns
     { json_object_object_foreach(entries,key,value) {
         struct json_object *old;
         if (json_object_object_get_ex(candidate,key,&old)) {
-            if (strcmp(entry_tag(old),entry_tag(value))) {error="GUID conflict: an existing BACnet address has a different GUID";goto done;}
+            if (strcmp(entry_tag(old),entry_tag(value))) identities_changed=true;
             if (json_object_is_type(old,json_type_object)) {
                 json_object_object_foreach(old,field,v) {
                     struct json_object *unused;
@@ -155,6 +156,9 @@ static const char *import_document(struct json_object *doc, unsigned *added, uns
     if (identity_index) json_object_put(identity_index);
     identity_index = json_object_get(seen);
     tag_registry_restore_devices();
+    /* Drop queued publications using superseded IDs. The next connection
+     * clears COV publication state and messages resolve the restored GUIDs. */
+    if (identities_changed) mqtt_client_reconnect();
 done:
     if (entries) json_object_put(entries);
     if (candidate) json_object_put(candidate);

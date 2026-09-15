@@ -57,7 +57,7 @@
       <p>{{ $t('Download controller ID and the local GUID mapping with names, units and descriptions.') }}</p>
       <tlt-button :disabled="exportBusy" @click="downloadPoints">{{ $t('Download points JSON') }}</tlt-button>
       <p v-if="exportError" role="alert">{{ exportError }}</p>
-      <p>{{ $t('Restore points from an export or tags.json. Existing points are kept; conflicting GUIDs are rejected.') }}</p>
+      <p>{{ $t('Restore points from an export or tags.json. GUIDs in the file replace local GUIDs for matching BACnet points. Points not in the file are kept.') }}</p>
       <input ref="importFile" type="file" accept=".json,application/json" style="display:none" :disabled="importBusy" @change="chooseImport" />
       <tlt-button :disabled="importBusy" @click="$refs.importFile.click()">{{ $t('Choose points JSON') }}</tlt-button>
       <p v-if="importPreview">{{ importPreview }}</p>
@@ -227,7 +227,7 @@ export default {
         const controller = doc.controllerId || doc.controller_id;
         if (controller && controller !== this.config.controller_id) throw new Error('Controller ID does not match this gateway');
         this.importDocument = doc;
-        this.importPreview = `${file.name}: ${count} ${this.$t('points')}. ${this.$t('Existing GUIDs are preserved. Click Import points to apply.')}`;
+        this.importPreview = `${file.name}: ${count} ${this.$t('points')}. ${this.$t('GUIDs from this file will become the active GUIDs. Click Import points to apply.')}`;
       } catch (e) { this.importMessage = e.message; }
     },
     async importPoints() {

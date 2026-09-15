@@ -58,7 +58,8 @@
       <tlt-button :disabled="exportBusy" @click="downloadPoints">{{ $t('Download points JSON') }}</tlt-button>
       <p v-if="exportError" role="alert">{{ exportError }}</p>
       <p>{{ $t('Restore points from an export or tags.json. Existing points are kept; conflicting GUIDs are rejected.') }}</p>
-      <input type="file" accept=".json,application/json" :disabled="importBusy" @change="chooseImport" />
+      <input ref="importFile" type="file" accept=".json,application/json" style="display:none" :disabled="importBusy" @change="chooseImport" />
+      <tlt-button :disabled="importBusy" @click="$refs.importFile.click()">{{ $t('Choose points JSON') }}</tlt-button>
       <p v-if="importPreview">{{ importPreview }}</p>
       <tlt-button v-if="importDocument" :disabled="importBusy" @click="importPoints">{{ $t('Import points') }}</tlt-button>
       <p v-if="importMessage" role="status">{{ importMessage }}</p>

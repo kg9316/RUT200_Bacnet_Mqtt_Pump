@@ -5,9 +5,8 @@
            style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(127,127,127,.15);">
         <span style="opacity:.7;font-size:13px;">{{ row.label }}</span>
         <span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;text-align:right;">
-          <span v-if="row.dot"
-                :style="{width:'8px',height:'8px',flex:'0 0 auto',borderRadius:'50%',background: row.dot === 'ok' ? '#2e9b57' : '#c44747'}"></span>
-          {{ row.value }}
+          <tlt-badge v-if="row.dot" :type="row.dot === 'ok' ? 'primary' : 'inactive'">{{ row.value }}</tlt-badge>
+          <span v-else>{{ row.value }}</span>
         </span>
       </div>
 
@@ -15,6 +14,16 @@
         <tlt-button @click="loadRuntime">{{ $t('Refresh') }}</tlt-button>
       </div>
     </tlt-card>
+
+    <tlt-table id="gk-bacnet-devices" :title="$t('BACnet devices')"
+               :data-source="deviceRows" :columns="deviceColumns" id-key="id"
+               :pagination="true" :initial-per-page="25" @refresh="loadRuntime">
+      <template #state="{ record }">
+        <tlt-badge :type="record.state === 'online' ? 'primary' : record.state === 'offline' ? 'inactive' : 'disabled'">
+          {{ $t(record.state === 'online' ? 'Online' : record.state === 'offline' ? 'Offline' : 'Unknown') }}
+        </tlt-badge>
+      </template>
+    </tlt-table>
 
     <tlt-card :title="$t('Gateway configuration')">
       <div v-for="field in configFields" :key="field.key"
@@ -105,8 +114,26 @@ export default {
     };
   },
   computed: {
+    deviceRows() {
+      return (this.status.deviceDetails || []).map(d => ({ ...d,
+        name: d.name || String(d.id),
+        state: this.status.running ? d.state : 'unknown',
+        lastResponseText: d.lastResponse ? new Date(d.lastResponse * 1000).toLocaleString() : '-',
+      }));
+    },
+    deviceColumns() {
+      return [
+        { dataIndex: 'id', title: this.$t('Device ID') },
+        { dataIndex: 'name', title: this.$t('Name') },
+        { dataIndex: 'state', title: this.$t('Status') },
+        { dataIndex: 'points', title: this.$t('Known points') },
+        { dataIndex: 'lastResponseText', title: this.$t('Last response') },
+        { dataIndex: 'retryIn', title: this.$t('Retry in seconds') },
+      ];
+    },
     statusRows() {
       return [
+        { label: this.$t('BACnet availability'), value: `${this.deviceRows.filter(d => d.state === 'online').length} ${this.$t('online')} / ${this.deviceRows.filter(d => d.state === 'offline').length} ${this.$t('offline')} / ${this.deviceRows.filter(d => d.state === 'unknown').length} ${this.$t('unknown')}` },
         { label: this.$t('Package version'), value: this.status.packageVersion || '-' },
         { label: this.$t('Service'), value: this.status.running ? this.$t('Running') : this.$t('Stopped'), dot: this.status.running ? 'ok' : 'bad' },
         { label: this.$t('MQTT'), value: this.status.mqttConnected ? this.$t('Connected') : this.$t('Disconnected'), dot: this.status.mqttConnected ? 'ok' : 'bad' },

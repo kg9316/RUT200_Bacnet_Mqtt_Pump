@@ -58,6 +58,7 @@ static int test_rename(const char *from, const char *to)
 #define TAG_REGISTRY_PATH "./tags-test.json"
 #endif
 #include "../src/tag_registry.c"
+#include "../src/device_table.c"
 
 static void write_registry(const char *contents)
 {
@@ -89,6 +90,12 @@ static void test_guids(void)
     assert(!metadata_dirty);
     tag_registry_set_metadata(100, 0, 1, "Room A", "deg C", "Local metadata");
     assert(!metadata_dirty); /* unchanged metadata must not rewrite flash */
+    tag_registry_restore_devices();
+    DEVICE_STATE *known=find_device(100);
+    assert(known && known->state==0 && known->last_response==0);
+    assert(!strcmp(known->points[0].name,"Room A") && !known->points[0].have_value);
+    assert(tag_registry_lookup(100,0,1));
+    device_table_cleanup();
     tag_registry_cleanup();
     assert(tag_registry_init() == 0);
     assert(strcmp(first, tag_registry_get(100, 0, 1)) == 0);

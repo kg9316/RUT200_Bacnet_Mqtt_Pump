@@ -82,5 +82,7 @@ jobs:
           "$RUNNER_TEMP/test-status"
           cc -I"$RUNNER_TEMP/bacnet/src" tests/test_device_table.c -o "$RUNNER_TEMP/test-device-table"
           "$RUNNER_TEMP/test-device-table"
+          cc -O1 -I"$RUNNER_TEMP/bacnet/src" -I"$RUNNER_TEMP/bacnet/ports/linux" tests/test_bacnet.c -o "$RUNNER_TEMP/test-bacnet"
+          "$RUNNER_TEMP/test-bacnet"
           lua5.1 tests/test_api.lua package/vuci-app-gk-bacnet-mqtt-api/files/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua
           node tests/test_ui.cjs package/vuci-app-gk-bacnet-mqtt-ui/src/src/views/services/GkBacnetMqtt.vue

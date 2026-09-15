@@ -11,6 +11,8 @@
 
 #define MAX_DEVICES            500
 #define MAX_POINTS_PER_DEVICE 10000
+#define RPM_BATCH_MAX 30
+
 #define NAME_LEN                96
 #define DESC_LEN               192
 #define UNIT_LEN                48
@@ -58,6 +60,8 @@ typedef struct {
     time_t last_publish;
     uint64_t next_poll_ms;
     uint8_t metadata_step;
+    uint8_t failures;
+    uint64_t retry_after_ms;
 } POINT_STATE;
 
 typedef struct {
@@ -74,6 +78,18 @@ typedef struct {
     bool allocation_warned;
     size_t point_count;
     uint64_t last_seen_ms;
+    time_t last_response;
+    uint64_t retry_after_ms;
+    uint64_t discovery_after_ms;
+    size_t point_cursor;
+    size_t metadata_cursor;
+    unsigned max_apdu;
+    uint8_t state; /* 0 unknown, 1 online, 2 offline */
+    uint8_t failures;
+    uint8_t backoff;
+    uint8_t rpm_limit; /* 0 = not yet sized, 1 = single reads */
+    uint8_t phase;
+
 } DEVICE_STATE;
 
 typedef enum {
@@ -84,7 +100,8 @@ typedef enum {
     REQ_POINT_NAME,
     REQ_POINT_DESCRIPTION,
     REQ_POINT_UNITS,
-    REQ_POINT_PRESENT_VALUE
+    REQ_POINT_PRESENT_VALUE,
+    REQ_POINT_MULTIPLE
 } REQUEST_KIND;
 
 typedef struct {
@@ -95,6 +112,8 @@ typedef struct {
     DEVICE_STATE *device;
     POINT_STATE *point;
     uint32_t object_list_index;
+    size_t batch[RPM_BATCH_MAX];
+    unsigned batch_count;
 } REQUEST_STATE;
 
 extern DEVICE_STATE g_devices[MAX_DEVICES];

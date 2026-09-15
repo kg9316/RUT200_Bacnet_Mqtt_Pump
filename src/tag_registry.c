@@ -1,4 +1,5 @@
 #include "tag_registry.h"
+#include "device_table.h"
 #include "logger.h"
 #include <json-c/json.h>
 #include <errno.h>
@@ -199,4 +200,27 @@ void tag_registry_flush_metadata(void)
     if (!registry || !metadata_dirty || now < next_metadata_flush) return;
     next_metadata_flush = now + 30000;
     if (!persist()) LOG_ERRORF("Point metadata could not be saved; retrying in 30 seconds");
+}
+
+/* Restore identities/metadata only. Live values and reachability always start empty. */
+void tag_registry_restore_devices(void)
+{
+    if (!registry) return;
+    json_object_object_foreach(registry, key, entry) {
+        unsigned di, ot, oi; char extra;
+        if (sscanf(key, "%u:%u:%u%c", &di, &ot, &oi, &extra) != 3 ||
+            di > 4194303 || oi > 4194303 || ot > 1023) continue;
+        DEVICE_STATE *d = get_or_create_device(di);
+        if (!d) continue;
+        POINT_STATE *p = add_point(d, (BACNET_OBJECT_TYPE)ot, oi);
+        if (!p || !json_object_is_type(entry, json_type_object)) continue;
+        const char *keys[] = {"n", "u", "d"};
+        char *dest[] = {p->name, p->unit, p->description};
+        size_t sizes[] = {sizeof(p->name), sizeof(p->unit), sizeof(p->description)};
+        for (unsigned i=0; i<3; i++) {
+            struct json_object *v;
+            if (json_object_object_get_ex(entry, keys[i], &v) && json_object_is_type(v,json_type_string))
+                safe_copy(dest[i], sizes[i], json_object_get_string(v));
+        }
+    }
 }

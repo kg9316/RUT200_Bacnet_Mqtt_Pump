@@ -5,6 +5,7 @@
 #include "logger.h"
 #include "mqtt_client.h"
 #include "status.h"
+#include "tag_registry.h"
 
 #include <signal.h>
 #include <stdlib.h>
@@ -70,6 +71,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    if (tag_registry_init() == 0) tag_registry_restore_devices();
     status_write_now();
 
     while (g_running) {

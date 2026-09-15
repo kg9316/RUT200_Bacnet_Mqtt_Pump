@@ -26,7 +26,7 @@ DEVICE_STATE *get_or_create_device(uint32_t id)
     DEVICE_STATE *device = find_device(id);
 
     if (device) {
-        device->last_seen_ms = monotonic_ms();
+        /* Discovery is not proof of a successful read. */
         return device;
     }
 
@@ -36,7 +36,7 @@ DEVICE_STATE *get_or_create_device(uint32_t id)
             memset(device, 0, sizeof(*device));
             device->used = true;
             device->device_id = id;
-            device->last_seen_ms = monotonic_ms();
+            /* Discovery is not proof of a successful read. */
             device->next_object_index = 1;
             printf("NEW DEVICE DEV=%lu\n", (unsigned long)id);
             return device;
@@ -72,6 +72,9 @@ bool object_type_has_present_value(BACNET_OBJECT_TYPE type)
         case OBJECT_MULTI_STATE_INPUT:
         case OBJECT_MULTI_STATE_OUTPUT:
         case OBJECT_MULTI_STATE_VALUE:
+        case OBJECT_CHARACTERSTRING_VALUE:
+        case OBJECT_SCHEDULE:
+        case OBJECT_CALENDAR:
             return true;
         default:
             return false;

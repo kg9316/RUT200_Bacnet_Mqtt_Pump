@@ -21,12 +21,20 @@ void status_write_now(void)
 {
     char tmp_path[160];
     size_t i,j,count=0;
+    uint64_t now=monotonic_ms();
     struct json_object *root=json_object_new_object();
+    struct json_object *devices=json_object_new_array();
     FILE *f;
     if (!root) return;
     for(i=0;i<MAX_DEVICES;i++) {
         DEVICE_STATE *d=&g_devices[i];
         if(!d->used) continue;
+        struct json_object *row=json_object_new_object();
+        NUM(row,"id",d->device_id); STR(row,"name",d->name);
+        NUM(row,"points",d->point_count); STR(row,"state",d->state==1?"online":d->state==2?"offline":"unknown");
+        NUM(row,"lastResponse",d->last_response); NUM(row,"rpmBatch",d->rpm_limit);
+        NUM(row,"retryIn",d->retry_after_ms>now?(d->retry_after_ms-now+999)/1000:0);
+        json_object_array_add(devices,row);
         for(j=0;j<d->point_count;j++) {
             POINT_STATE *p=&d->points[j];
             ++count;
@@ -36,6 +44,7 @@ void status_write_now(void)
         }
     }
     tag_registry_flush_metadata();
+    json_object_object_add(root,"deviceDetails",devices);
     BOOL(root,"running",true); BOOL(root,"mqttConnected",mqtt_client_is_connected());
     NUM(root,"devices",device_count()); NUM(root,"points",count);
     STR(root,"mqttHost",g_mqtt_host); NUM(root,"mqttPort",g_mqtt_port);

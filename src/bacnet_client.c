@@ -19,10 +19,13 @@
 #include "bacnet/basic/service/s_whois.h"
 #include "bacnet/basic/npdu/h_npdu.h"
 #include "bacnet/basic/tsm/tsm.h"
+#include "bacnet/basic/service/s_rpm.h"
 
 static uint64_t g_next_discovery_ms = 0;
 static uint64_t next_timeout_log_ms;
 static unsigned timeout_count;
+static size_t device_cursor;
+static uint64_t timer_last_ms;
 
 static bool application_value_to_uint32(const BACNET_APPLICATION_DATA_VALUE *value,
                                         uint32_t *out)
@@ -140,7 +143,80 @@ static void unit_to_text(uint32_t unit, char *dst, size_t n)
 
 static void request_clear(void)
 {
+    if (g_request.active) tsm_free_invoke_id(g_request.invoke_id);
     memset(&g_request, 0, sizeof(g_request));
+}
+
+static bool request_matches(BACNET_ADDRESS *src, uint8_t id)
+{
+    BACNET_ADDRESS dest; unsigned max_apdu;
+    return g_request.active && id == g_request.invoke_id &&
+        address_get_by_device(g_request.device->device_id, &max_apdu, &dest) &&
+        address_match(src, &dest);
+}
+
+static void device_answered(DEVICE_STATE *d)
+{
+    if (d->state == 2) LOG_INFOF("BACnet device online: device=%lu", (unsigned long)d->device_id);
+    d->state = 1; d->failures = 0; d->backoff = 0; d->retry_after_ms = 0;
+    d->last_seen_ms = monotonic_ms(); d->last_response = unix_time_now();
+}
+
+static void point_failed(POINT_STATE *p)
+{
+    if (p->failures < 6) p->failures++;
+    p->retry_after_ms = monotonic_ms() + (p->failures == 1 ? 10000 : p->failures == 2 ? 30000 : 60000);
+}
+
+static void device_timed_out(DEVICE_STATE *d)
+{
+    if (d->failures < 3) d->failures++;
+    if (d->failures >= 3) {
+        if (d->state != 2) LOG_WARNF("BACnet device offline: device=%lu", (unsigned long)d->device_id);
+        d->state = 2;
+        d->retry_after_ms = monotonic_ms() + (d->backoff == 0 ? 10000 : d->backoff == 1 ? 30000 : 60000);
+        if (d->backoff < 2) d->backoff++;
+    } else d->retry_after_ms = monotonic_ms() + 1000;
+}
+
+static void request_failed(bool timeout)
+{
+    DEVICE_STATE *d = g_request.device;
+    if (!d) return;
+    if (timeout) device_timed_out(d);
+    if (g_request.point) point_failed(g_request.point);
+    for (unsigned i=0; i<g_request.batch_count; i++) point_failed(&d->points[g_request.batch[i]]);
+    /* A failed group is split on its next turn; no immediate retry monopolizes the channel. */
+    if (g_request.kind == REQ_POINT_MULTIPLE && d->rpm_limit > 1)
+        d->rpm_limit = (g_request.batch_count + 1) / 2;
+    if (!g_request.point && g_request.kind != REQ_POINT_MULTIPLE)
+        d->discovery_after_ms = monotonic_ms() + 10000;
+    /* Optional metadata must not prevent polling. Preserve cached text on failures. */
+    if (g_request.point && g_request.kind >= REQ_POINT_NAME && g_request.kind <= REQ_POINT_UNITS) {
+        g_request.point->metadata_step++;
+        if (g_request.point->metadata_step >= 3) g_request.point->metadata_complete = true;
+    }
+    if (!timeout && g_request.kind == REQ_DEVICE_NAME) d->have_name = true;
+    if (!timeout && g_request.kind == REQ_OBJECT_LIST_ITEM) d->next_object_index++;
+    request_clear();
+}
+
+/* Validate primitive length before passing remote bytes to the legacy stack decoder. */
+static int primitive_length(const uint8_t *p, unsigned n)
+{
+    if (!n || (p[0] & 8) || (p[0] >> 4) > 12) return -1;
+    unsigned tag=p[0] >> 4, len=p[0]&7, head=1;
+    if (tag <= 1) return (tag==0 ? len==0 : len<=1) ? 1 : -1;
+    if (len > 5) return -1;
+    if (len == 5) {
+        if (n < 2) return -1;
+        len=p[1]; head=2;
+        if (len==254) { if(n<4)return -1; len=((unsigned)p[2]<<8)|p[3];head=4; }
+        else if(len==255) { if(n<6)return -1; len=((unsigned)p[2]<<24)|((unsigned)p[3]<<16)|((unsigned)p[4]<<8)|p[5];head=6; }
+    }
+    if (head>n || len>n-head) return -1;
+    if ((tag==4 && len!=4) || (tag==5 && len!=8) || (tag==12 && len!=4)) return -1;
+    return (int)(head+len);
 }
 
 static bool send_read_property(REQUEST_KIND kind,
@@ -201,7 +277,8 @@ static void gateway_i_am_handler(uint8_t *request,
          * because nothing was ever transmitted). address_add() has the
          * missing "allocate a free slot" fallback. */
         address_add(device_id, max_apdu, src);
-        get_or_create_device(device_id);
+        DEVICE_STATE *d = get_or_create_device(device_id);
+        if (d) d->max_apdu = max_apdu;
     }
 }
 
@@ -217,7 +294,7 @@ static void gateway_read_property_ack_handler(
 
     (void)src;
 
-    if (!g_request.active || service_data->invoke_id != g_request.invoke_id)
+    if (!request_matches(src, service_data->invoke_id) || g_request.kind == REQ_POINT_MULTIPLE)
         return;
 
     memset(&rp, 0, sizeof(rp));
@@ -226,19 +303,27 @@ static void gateway_read_property_ack_handler(
     rc = rp_ack_decode_service_request(request, length, &rp);
     if (rc <= 0) {
         fprintf(stderr, "Malformed RP ACK invoke=%u\n", service_data->invoke_id);
-        request_clear();
+        request_failed(false);
         return;
     }
 
+    if (primitive_length(rp.application_data, rp.application_data_len) != rp.application_data_len) { request_failed(false); return; }
     rc = bacapp_decode_application_data(rp.application_data,
                                         rp.application_data_len,
                                         &value);
     if (rc <= 0) {
-        fprintf(stderr, "Cannot decode RP value invoke=%u\n", service_data->invoke_id);
-        request_clear();
+        request_failed(false);
         return;
     }
 
+    if (g_request.point) {
+        if (rp.object_type != g_request.point->object_type || rp.object_instance != g_request.point->object_instance) { request_failed(false); return; }
+    } else if (rp.object_type != OBJECT_DEVICE || rp.object_instance != g_request.device->device_id) { request_failed(false); return; }
+    BACNET_PROPERTY_ID expected = g_request.kind==REQ_POINT_PRESENT_VALUE ? PROP_PRESENT_VALUE :
+        g_request.kind==REQ_POINT_DESCRIPTION ? PROP_DESCRIPTION : g_request.kind==REQ_POINT_UNITS ? PROP_UNITS :
+        (g_request.kind==REQ_OBJECT_LIST_COUNT || g_request.kind==REQ_OBJECT_LIST_ITEM) ? PROP_OBJECT_LIST : PROP_OBJECT_NAME;
+    if (rp.object_property != expected) { request_failed(false); return; }
+    device_answered(g_request.device);
     switch (g_request.kind) {
         case REQ_DEVICE_NAME:
             if (application_value_to_string(&value,
@@ -314,6 +399,8 @@ static void gateway_read_property_ack_handler(
         case REQ_POINT_PRESENT_VALUE:
             if (g_request.point &&
                 application_value_to_point_value(&value, g_request.point)) {
+                g_request.point->failures = 0;
+                g_request.point->retry_after_ms = 0;
                 g_request.point->have_value = true;
                 mqtt_publish_live_if_needed(g_request.device, g_request.point);
             }
@@ -328,32 +415,75 @@ static void gateway_read_property_ack_handler(
     request_clear();
 }
 
-static void gateway_abort_handler(BACNET_ADDRESS *src,
-                                  uint8_t invoke_id,
-                                  uint8_t reason,
-                                  bool server)
+static void gateway_error_handler(BACNET_ADDRESS *src, uint8_t id,
+                                  BACNET_ERROR_CLASS cls, BACNET_ERROR_CODE code)
 {
-    (void)src;
+    (void)cls; (void)code;
+    if (!request_matches(src,id)) return;
+    device_answered(g_request.device);
+    request_failed(false);
+}
+static void gateway_abort_handler(BACNET_ADDRESS *src, uint8_t id, uint8_t reason, bool server)
+{
     (void)reason;
-    (void)server;
-
-    if (g_request.active && invoke_id == g_request.invoke_id) {
-        fprintf(stderr, "BACnet Abort invoke=%u\n", invoke_id);
-        request_clear();
-    }
+    if (!server || !request_matches(src,id)) return;
+    device_answered(g_request.device);
+    request_failed(false);
+}
+static void gateway_reject_handler(BACNET_ADDRESS *src, uint8_t id, uint8_t reason)
+{
+    if (!request_matches(src,id)) return;
+    device_answered(g_request.device);
+    if (g_request.kind == REQ_POINT_MULTIPLE && reason == REJECT_REASON_UNRECOGNIZED_SERVICE)
+        g_request.device->rpm_limit = 1;
+    request_failed(false);
 }
 
-static void gateway_reject_handler(BACNET_ADDRESS *src,
-                                   uint8_t invoke_id,
-                                   uint8_t reason)
+static void gateway_rpm_ack(uint8_t *buf, uint16_t n, BACNET_ADDRESS *src,
+                            BACNET_CONFIRMED_SERVICE_ACK_DATA *svc)
 {
-    (void)src;
-    (void)reason;
-
-    if (g_request.active && invoke_id == g_request.invoke_id) {
-        fprintf(stderr, "BACnet Reject invoke=%u\n", invoke_id);
-        request_clear();
+    if (!request_matches(src,svc->invoke_id) || g_request.kind != REQ_POINT_MULTIPLE) return;
+    DEVICE_STATE *d=g_request.device;
+    bool seen[RPM_BATCH_MAX]={false};
+    unsigned pos=0;
+    /* Only the requested scalar Present_Value results are accepted. No heap allocation. */
+    while (pos<n) {
+        if (n-pos<10 || buf[pos++]!=0x0c) goto malformed;
+        uint32_t obj=((uint32_t)buf[pos]<<24)|((uint32_t)buf[pos+1]<<16)|((uint32_t)buf[pos+2]<<8)|buf[pos+3];pos+=4;
+        if (buf[pos++]!=0x1e || buf[pos++]!=0x29 || buf[pos++]!=PROP_PRESENT_VALUE) goto malformed;
+        unsigned i;
+        for(i=0;i<g_request.batch_count;i++) {
+            POINT_STATE *p=&d->points[g_request.batch[i]];
+            if ((unsigned)p->object_type==(obj>>22) && p->object_instance==(obj&0x3fffff)) break;
+        }
+        if (i==g_request.batch_count || seen[i]) goto malformed;
+        POINT_STATE *p=&d->points[g_request.batch[i]];
+        if (buf[pos]==0x4e) {
+            pos++; int len=primitive_length(buf+pos,n-pos);
+            if(len<0 || (unsigned)len+2>n-pos || buf[pos+len]!=0x4f || buf[pos+len+1]!=0x1f) goto malformed;
+            BACNET_APPLICATION_DATA_VALUE value;memset(&value,0,sizeof(value));
+            if (bacapp_decode_application_data(buf+pos,len,&value)==len && application_value_to_point_value(&value,p)) {
+                p->have_value=true;p->failures=0;p->retry_after_ms=0;
+                p->next_poll_ms=monotonic_ms()+g_poll_ms;
+                mqtt_publish_live_if_needed(d,p);
+            } else point_failed(p);
+            pos+=len+2;
+        } else if(buf[pos]==0x5e) {
+            pos++;
+            for(unsigned j=0;j<2;j++) {
+                if(pos>=n || (buf[pos]>>4)!=9) goto malformed;
+                int len=primitive_length(buf+pos,n-pos);if(len<0)goto malformed;pos+=len;
+            }
+            if(n-pos<2 || buf[pos++]!=0x5f || buf[pos++]!=0x1f)goto malformed;
+            point_failed(p);
+        } else goto malformed;
+        seen[i]=true;
     }
+    device_answered(d);
+    for(unsigned i=0;i<g_request.batch_count;i++) if(!seen[i]) point_failed(&d->points[g_request.batch[i]]);
+    request_clear();return;
+malformed:
+    request_failed(false);
 }
 
 static bool schedule_device_work(DEVICE_STATE *device)
@@ -474,67 +604,90 @@ static bool schedule_poll(DEVICE_STATE *device,
                               0);
 }
 
+static bool schedule_values(DEVICE_STATE *d, uint64_t now)
+{
+    if (!d->point_count) return false;
+    size_t selected[RPM_BATCH_MAX]; unsigned count=0;
+    unsigned budget=d->max_apdu ? d->max_apdu : 480;
+    if (budget>MAX_APDU) budget=MAX_APDU;
+    unsigned used=3, limit=d->rpm_limit ? d->rpm_limit : RPM_BATCH_MAX;
+    for(size_t step=0;step<d->point_count;step++) {
+        size_t i=d->point_cursor;d->point_cursor=(i+1)%d->point_count;
+        POINT_STATE *p=&d->points[i];
+        if (!p->metadata_complete || p->next_poll_ms>now || p->retry_after_ms>now) continue;
+        /* Schedule and strings are variable length: read them individually. */
+        bool variable=p->object_type==OBJECT_CHARACTERSTRING_VALUE || p->object_type==OBJECT_SCHEDULE;
+        if (variable && count) {d->point_cursor=i;break;}
+        if (variable || limit==1) return schedule_poll(d,p,now);
+        if (used+20>budget || count>=limit) {d->point_cursor=i;break;}
+        selected[count++]=i;used+=20; /* includes common property-error responses */
+    }
+    if (!count) return false;
+    if(count==1) return schedule_poll(d,&d->points[selected[0]],now);
+    BACNET_READ_ACCESS_DATA objects[RPM_BATCH_MAX];
+    BACNET_PROPERTY_REFERENCE props[RPM_BATCH_MAX];uint8_t pdu[MAX_MPDU];
+    memset(objects,0,sizeof(objects));memset(props,0,sizeof(props));
+    for(unsigned i=0;i<count;i++) {
+        POINT_STATE *p=&d->points[selected[i]];
+        objects[i].object_type=p->object_type;objects[i].object_instance=p->object_instance;
+        objects[i].listOfProperties=&props[i];objects[i].next=i+1<count?&objects[i+1]:NULL;
+        props[i].propertyIdentifier=PROP_PRESENT_VALUE;props[i].propertyArrayIndex=BACNET_ARRAY_ALL;
+    }
+    uint8_t id=Send_Read_Property_Multiple_Request(pdu,sizeof(pdu),d->device_id,objects);
+    if(!id) {d->retry_after_ms=now+1000;return false;}
+    memset(&g_request,0,sizeof(g_request));g_request.active=true;g_request.invoke_id=id;
+    g_request.kind=REQ_POINT_MULTIPLE;g_request.device=d;g_request.sent_ms=now;g_request.batch_count=count;
+    memcpy(g_request.batch,selected,count*sizeof(selected[0]));
+    if(!d->rpm_limit)d->rpm_limit=limit;
+    return true;
+}
+
 static void scheduler_run(void)
 {
-    size_t i;
-    size_t j;
-    uint64_t now = monotonic_ms();
-
-    if (g_request.active) {
-        if (now - g_request.sent_ms > g_rp_timeout_ms) {
+    uint64_t now=monotonic_ms();
+    if(g_request.active) {
+        /* TSM owns retransmission and timeout. A bounded watchdog also releases its invoke ID. */
+        if(tsm_invoke_id_failed(g_request.invoke_id) || tsm_invoke_id_free(g_request.invoke_id) ||
+           now-g_request.sent_ms>(uint64_t)g_rp_timeout_ms*3+1000) {
             ++timeout_count;
-            if (now >= next_timeout_log_ms) {
-                LOG_WARNF("BACnet read timeout: device=%lu invoke=%u kind=%d (%u timeouts since last report)",
-                    g_request.device ? (unsigned long)g_request.device->device_id : 0,
-                    g_request.invoke_id, (int)g_request.kind, timeout_count);
-                timeout_count = 0;
-                next_timeout_log_ms = now + 60000;
+            if(now>=next_timeout_log_ms) {
+                LOG_WARNF("BACnet read timeout: device=%lu (%u since last report)",
+                          (unsigned long)g_request.device->device_id,timeout_count);
+                timeout_count=0;next_timeout_log_ms=now+60000;
             }
-
-            if (g_request.kind == REQ_POINT_UNITS && g_request.point) {
-                g_request.point->unit[0] = '\0';
-                g_request.point->metadata_step = 3;
-                g_request.point->metadata_complete = true;
-                mqtt_publish_config(g_request.device, g_request.point);
-            } else if (g_request.kind == REQ_POINT_DESCRIPTION && g_request.point) {
-                g_request.point->description[0] = '\0';
-                g_request.point->metadata_step = 2;
-            }
-
-            request_clear();
+            request_failed(true);
         }
         return;
     }
-
-    for (i = 0; i < MAX_DEVICES; i++) {
-        if (schedule_device_work(&g_devices[i]))
-            return;
-    }
-
-    for (i = 0; i < MAX_DEVICES; i++) {
-        DEVICE_STATE *device = &g_devices[i];
-        if (!device->used || !device->object_list_complete)
-            continue;
-
-        for (j = 0; j < device->point_count; j++) {
-            if (!device->points[j].metadata_complete &&
-                schedule_metadata(device, &device->points[j]))
-                return;
+    for(size_t step=0;step<MAX_DEVICES;step++) {
+        size_t i=device_cursor; device_cursor=(i+1)%MAX_DEVICES;
+        DEVICE_STATE *d=&g_devices[i];
+        if(!d->used || d->retry_after_ms>now) continue;
+        BACNET_ADDRESS dest;unsigned apdu;
+        if(!address_get_by_device(d->device_id,&apdu,&dest)) {
+            device_timed_out(d);continue;
         }
-    }
-
-    for (i = 0; i < MAX_DEVICES; i++) {
-        DEVICE_STATE *device = &g_devices[i];
-        if (!device->used || !device->object_list_complete)
-            continue;
-
-        for (j = 0; j < device->point_count; j++) {
-            if (schedule_poll(device, &device->points[j], now))
-                return;
+        d->max_apdu=apdu;
+        if(d->state==2) {
+            if(send_read_property(REQ_DEVICE_NAME,d,NULL,OBJECT_DEVICE,d->device_id,PROP_OBJECT_NAME,BACNET_ARRAY_ALL,0))return;
+            d->retry_after_ms=now+1000;continue;
+        }
+        /* Rotate discovery, metadata, values as well as devices. Cached points need not wait for discovery. */
+        for(unsigned phase=0;phase<3;phase++) {
+            unsigned task=d->phase;d->phase=(task+1)%3;
+            if(task==0 && d->discovery_after_ms<=now && schedule_device_work(d))return;
+            if(task==1 && d->point_count) {
+                for(size_t j=0;j<d->point_count;j++) {
+                    size_t k=d->metadata_cursor;d->metadata_cursor=(k+1)%d->point_count;
+                    if(d->points[k].retry_after_ms<=now && schedule_metadata(d,&d->points[k]))return;
+                }
+            }
+            if(task==2 && schedule_values(d,now))return;
         }
     }
 }
 
+#ifndef BACNET_SCHEDULER_TEST
 int bacnet_client_init(const char *interface_name)
 {
     /* bacnet-stack's BIP_Port (ports/linux/bip-init.c) has no static
@@ -547,12 +700,19 @@ int bacnet_client_init(const char *interface_name)
 
     /* Per-packet BIP/BVLC traces are disabled in normal operation. */
 
+    request_clear();
     address_init();
+    apdu_timeout_set(g_rp_timeout_ms);
+    apdu_retries_set(1);
+    timer_last_ms = monotonic_ms();
 
     apdu_set_unconfirmed_handler(SERVICE_UNCONFIRMED_I_AM,
                                  gateway_i_am_handler);
     apdu_set_confirmed_ack_handler(SERVICE_CONFIRMED_READ_PROPERTY,
                                    gateway_read_property_ack_handler);
+    apdu_set_confirmed_ack_handler(SERVICE_CONFIRMED_READ_PROP_MULTIPLE, gateway_rpm_ack);
+    apdu_set_error_handler(SERVICE_CONFIRMED_READ_PROPERTY, gateway_error_handler);
+    apdu_set_error_handler(SERVICE_CONFIRMED_READ_PROP_MULTIPLE, gateway_error_handler);
     apdu_set_abort_handler(gateway_abort_handler);
     apdu_set_reject_handler(gateway_reject_handler);
 
@@ -596,11 +756,16 @@ void bacnet_client_loop(void)
     if (pdu_len)
         npdu_handler(&src, rx, pdu_len);
 
+    now = monotonic_ms();
+    uint64_t elapsed=now-timer_last_ms;timer_last_ms=now;
+    while(elapsed) {uint16_t dt=elapsed>65535?65535:(uint16_t)elapsed;tsm_timer_milliseconds(dt);elapsed-=dt;}
     scheduler_run();
-    tsm_timer_milliseconds(20);
 }
 
 void bacnet_client_cleanup(void)
 {
+    request_clear();
     datalink_cleanup();
 }
+
+#endif

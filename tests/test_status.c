@@ -29,6 +29,9 @@ int main(void) {
     status_write_now();
     struct json_object *root=json_object_from_file(STATUS_FILE), *rows,*row,*v;
     assert(root && !json_object_object_get_ex(root,"pointDetails",&rows));
+    assert(json_object_object_get_ex(root,"deviceDetails",&rows) && json_object_array_length(rows)==1);
+    row=json_object_array_get_idx(rows,0);
+    assert(json_object_object_get_ex(row,"state",&v) && !strcmp(json_object_get_string(v),"unknown"));
     assert(!strstr(json_object_to_json_string(root),"21.5"));
     assert(json_object_object_get_ex(root,"points",&v) && json_object_get_int(v)==2);
     assert(json_object_object_get_ex(root,"mqttSent",&v) && json_object_get_int(v)==11);

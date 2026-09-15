@@ -57,6 +57,11 @@
       <p>{{ $t('Download controller ID and the local GUID mapping with names, units and descriptions.') }}</p>
       <tlt-button :disabled="exportBusy" @click="downloadPoints">{{ $t('Download points JSON') }}</tlt-button>
       <p v-if="exportError" role="alert">{{ exportError }}</p>
+      <p>{{ $t('Restore points from an export or tags.json. Existing points are kept; conflicting GUIDs are rejected.') }}</p>
+      <input type="file" accept=".json,application/json" :disabled="importBusy" @change="chooseImport" />
+      <p v-if="importPreview">{{ importPreview }}</p>
+      <tlt-button v-if="importDocument" :disabled="importBusy" @click="importPoints">{{ $t('Import points') }}</tlt-button>
+      <p v-if="importMessage" role="status">{{ importMessage }}</p>
     </tlt-card>
 
     <tlt-card :title="$t('Gateway log')">
@@ -90,6 +95,10 @@ export default {
       logMode: 'mqtt',
       exportBusy: false,
       exportError: '',
+      importDocument: null,
+      importPreview: '',
+      importMessage: '',
+      importBusy: false,
       timer: null,
       config: {
         enabled: '0',
@@ -197,6 +206,43 @@ export default {
     if (this.timer) clearInterval(this.timer);
   },
   methods: {
+    async chooseImport(event) {
+      this.importDocument = null; this.importPreview = ''; this.importMessage = '';
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      try {
+        if (file.size > 2 * 1024 * 1024) throw new Error('Maximum upload size is 2 MB');
+        const doc = JSON.parse(await file.text());
+        if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('Invalid JSON file');
+        const count = Array.isArray(doc.points) ? doc.points.length : Object.keys(doc).filter(k => /^\d+:\d+:\d+$/.test(k)).length;
+        if (!count) throw new Error('File contains no points');
+        const controller = doc.controllerId || doc.controller_id;
+        if (controller && controller !== this.config.controller_id) throw new Error('Controller ID does not match this gateway');
+        this.importDocument = doc;
+        this.importPreview = `${file.name}: ${count} ${this.$t('points')}. ${this.$t('Existing GUIDs are preserved. Click Import points to apply.')}`;
+      } catch (e) { this.importMessage = e.message; }
+    },
+    async importPoints() {
+      if (!this.importDocument || this.importBusy) return;
+      this.importBusy = true; this.importMessage = this.$t('Importing...');
+      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      try {
+        const response = await this.$axios.post('/api/gk_bacnet_mqtt/config/import', {data:{id,document:this.importDocument}});
+        const queued = this.findPayload(response, ['queued']);
+        if (!queued || !queued.queued) throw new Error(this.findPayload(response,['error'])?.error || 'Import could not be queued');
+        for (let i=0; i<30; i++) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const response = await this.$axios.get('/api/gk_bacnet_mqtt/config/import');
+          const result = this.findPayload(response, ['id']);
+          if (!result || result.id !== id) continue;
+          if (!result.ok) throw new Error(result.error || 'Import rejected');
+          this.importMessage = `${this.$t('Import completed')}: ${result.added} ${this.$t('new points')}, ${result.updated} ${this.$t('existing points')}.`;
+          this.importDocument = null; this.importPreview = ''; await this.loadRuntime();return;
+        }
+        throw new Error('Import result not confirmed. Refresh before trying again.');
+      } catch (e) { this.importMessage = e.message; }
+      finally { this.importBusy = false; }
+    },
     async downloadPoints() {
       this.exportBusy = true;
       this.exportError = '';

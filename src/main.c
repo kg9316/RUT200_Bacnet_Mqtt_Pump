@@ -81,6 +81,7 @@ int main(int argc, char **argv)
         else
             usleep(20000);
         status_write_if_due();
+        tag_registry_import_if_due();
         config_reload_if_due();
     }
 

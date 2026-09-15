@@ -282,3 +282,5 @@ void tag_registry_restore_devices(void)
         }
     }
 }
+
+#include "tag_import.inc"

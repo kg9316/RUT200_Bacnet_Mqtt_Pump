@@ -206,11 +206,45 @@ static void test_tokens(void)
     response_size = 0;
 }
 
+static void test_imports(void)
+{
+    tag_registry_cleanup();device_table_cleanup();write_registry("{}");assert(tag_registry_init()==0);
+    safe_copy(g_mqtt_settings.controller_id,sizeof(g_mqtt_settings.controller_id),"controller-A");
+    const char *raw="{\"100:5:1\":{\"t\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"n\":\"Fan\",\"s\":{\"0\":\"Off\",\"1\":\"On\"}},\"_dn\":{\"100\":\"Controller A\"}}";
+    struct json_object *doc=json_tokener_parse(raw);unsigned added,updated;
+    assert(!import_document(doc,&added,&updated) && added==1 && updated==0);
+    assert(!strcmp(find_device(100)->name,"Controller A"));
+    assert(!import_document(doc,&added,&updated) && added==0 && updated==1);
+    json_object_put(doc);
+    const char *exported="{\"controllerId\":\"controller-A\",\"points\":[{\"di\":100,\"ot\":5,\"oi\":1,\"t\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"n\":\"Fan restored\"}]}";
+    doc=json_tokener_parse(exported);assert(!import_document(doc,&added,&updated));json_object_put(doc);
+    struct json_object *point,*states;
+    assert(json_object_object_get_ex(registry,"100:5:1",&point));
+    assert(json_object_object_get_ex(point,"s",&states)); /* Missing imported fields retain old metadata. */
+    const char *bad[]={
+      "{\"100:5:1\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\"}",
+      "{\"100:5:2\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\"}",
+      "{\"controllerId\":\"wrong-controller\",\"points\":[]}",
+      "{\"100:5:2\":{\"t\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\",\"s\":{\"bad\":\"On\"}}}",
+      "{\"100:5:2\":\"not-a-guid\"}", "[]"
+    };
+    char *before=strdup(json_object_to_json_string_ext(registry,JSON_C_TO_STRING_PLAIN));
+    for(unsigned i=0;i<sizeof(bad)/sizeof(bad[0]);i++) {
+        doc=json_tokener_parse(bad[i]);assert(import_document(doc,&added,&updated));json_object_put(doc);
+        assert(!strcmp(before,json_object_to_json_string_ext(registry,JSON_C_TO_STRING_PLAIN)));
+    }
+    free(before);tag_registry_cleanup();assert(tag_registry_init()==0);
+    assert(!strcmp(tag_registry_lookup(100,5,1),"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"));
+    device_table_cleanup();
+    puts("PASS: raw/export import, merge preservation, restart persistence, controller/GUID/state validation and rejected imports leave registry unchanged");
+}
+
 int main(void)
 {
     test_guids();
     test_messages();
     test_tokens();
+    test_imports();
     tag_registry_cleanup();
     remove(TAG_REGISTRY_PATH);
     puts("PASS: persistent unique GUIDs, corruption handling, all four payload types, no metadata, token renewal/expiry");

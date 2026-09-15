@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 51: persist binary and multistate labels in compact point metadata.
+# Release 52: validated JSON upload and GUID-preserving restore.
 
 on:
   workflow_dispatch:

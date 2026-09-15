@@ -40,6 +40,10 @@ int main(void){
  gateway_rpm_ack(ack,sizeof(ack),&src,&svc);assert(!g_request.active&&published==1&&a->state==1);assert(a->points[1].retry_after_ms>clock_ms);
  for(unsigned n=1;n<sizeof(ack);n++){a->points[0].next_poll_ms=a->points[1].next_poll_ms=0;a->points[0].retry_after_ms=a->points[1].retry_after_ms=0;a->point_cursor=0;a->rpm_limit=30;assert(schedule_values(a,clock_ms));gateway_rpm_ack(ack,n,&src,&svc);assert(!g_request.active);}
  assert(object_type_has_present_value(OBJECT_SCHEDULE));assert(object_type_has_present_value(OBJECT_CALENDAR));assert(object_type_has_present_value(OBJECT_CHARACTERSTRING_VALUE));assert(!object_type_has_present_value(OBJECT_DEVICE));
- device_table_cleanup();puts("PASS: fair rotation, point delay, offline backoff/recovery, bounded RPM, partial errors, truncated ACK cleanup, allowed types");
+ device_table_cleanup();a=device(300,30);a->rpm_limit=30;assert(schedule_values(a,clock_ms));
+ gateway_reject_handler(&src,g_request.invoke_id,REJECT_REASON_UNRECOGNIZED_SERVICE);
+ assert(!g_request.active && a->rpm_limit==1 && a->state==1);
+ clock_ms+=10000;assert(schedule_values(a,clock_ms));assert(g_request.kind==REQ_POINT_PRESENT_VALUE);
+ request_clear();device_table_cleanup();puts("PASS: fair rotation, point delay, offline backoff/recovery, bounded RPM, partial errors, truncated ACK cleanup, allowed types");
 }
 

@@ -14,20 +14,18 @@ jobs:
     timeout-minutes: 120
 
     env:
-      SDK_URL: https://firmware.teltonika-networks.com/7.24.2/RUT2M/RUT2M_R_GPL_00.07.24.2.tar.gz
-      SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.2.tar.gz
-      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v2
+      SDK_URL: https://firmware.teltonika-networks.com/7.24.3/RUT2M/RUT2M_R_GPL_00.07.24.3.tar.gz
+      SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.3.tar.gz
+      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.3-v2
 
     steps:
       - uses: actions/checkout@v4
-      - name: Restore prepared base or previous compatible SDK
+      - name: Restore exact firmware SDK base
         id: sdk-cache
         uses: actions/cache/restore@v4
         with:
           path: sdk
           key: ${{ env.BASE_CACHE_KEY }}-${{ runner.os }}
-          restore-keys: |
-            gk-sdk-base-RUT2M-00.07.24.2-v1-${{ runner.os }}
 
       - name: Install SDK prerequisites
         if: steps.sdk-cache.outputs.cache-hit != 'true'

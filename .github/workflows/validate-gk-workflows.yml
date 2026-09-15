@@ -26,10 +26,10 @@ jobs:
       - name: Verify cache chain names
         run: |
           set -euo pipefail
-          grep -q 'BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v2' .github/workflows/prepare-sdk-base.yml
-          grep -q 'BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v2' .github/workflows/prepare-vuci-cache.yml
-          grep -q 'VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v2' .github/workflows/prepare-vuci-cache.yml
-          grep -q 'VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v2' .github/workflows/build-gk-fast.yml
+          grep -q 'BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.3-v2' .github/workflows/prepare-sdk-base.yml
+          grep -q 'BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.3-v2' .github/workflows/prepare-vuci-cache.yml
+          grep -q 'VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.3-v2' .github/workflows/prepare-vuci-cache.yml
+          grep -q 'VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.3-v2' .github/workflows/build-gk-fast.yml
 
       - name: Enforce Fast Build cache preservation
         run: |

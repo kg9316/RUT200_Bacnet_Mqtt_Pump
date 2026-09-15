@@ -14,8 +14,8 @@ jobs:
     timeout-minutes: 45
 
     env:
-      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.2-v2
-      VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v2
+      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.3-v2
+      VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.3-v2
 
     steps:
       - uses: actions/checkout@v4

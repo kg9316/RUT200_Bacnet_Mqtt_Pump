@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     env:
-      VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.2-v2
+      VUCI_CACHE_KEY: gk-sdk-vuci-RUT2M-00.07.24.3-v2
     steps:
       - uses: actions/checkout@v4
       - name: Resolve shipped package version (including quiet MQTT logging)
@@ -199,6 +199,7 @@ jobs:
           ! printf '%s\n' "$LIST" | grep -q 'gk-bacnet-mqtt_.*\.ipk$'
           ! printf '%s\n' "$LIST" | grep -q 'vuci-app-gk-bacnet-mqtt-api_.*\.ipk$'
           printf '%s\n' "$LIST" | grep -q '^main$'; printf '%s\n' "$LIST" | grep -q '^main.sig$'
+          tar -xOzf "$PM_BUNDLE" main | grep -qx 'Firmware: RUT2M_R_GPL_00.07.24.3'
           cp "$PM_BUNDLE" "$RUNNER_TEMP/gk_bacnet_mqtt.tar.gz"
       - name: Return only the RutOS Package Manager file
         run: |

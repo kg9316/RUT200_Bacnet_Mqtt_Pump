@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 54: unified enable switch, BACnet status and lifecycle logging.
+# Release 55: build against RutOS 00.07.24.3 with BACnet log filter.
 
 on:
   workflow_dispatch:

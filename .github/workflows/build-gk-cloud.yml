@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 50: live configurable RPM maximum and stable device read mode.
+# Release 51: persist binary and multistate labels in compact point metadata.
 
 on:
   workflow_dispatch:

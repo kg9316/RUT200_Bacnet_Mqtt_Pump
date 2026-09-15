@@ -61,6 +61,8 @@ typedef struct {
     time_t last_publish;
     uint64_t next_poll_ms;
     uint8_t metadata_step;
+    uint32_t state_text_count;
+    uint32_t state_text_index;
     uint8_t failures;
     uint64_t retry_after_ms;
 } POINT_STATE;
@@ -105,7 +107,11 @@ typedef enum {
     REQ_POINT_DESCRIPTION,
     REQ_POINT_UNITS,
     REQ_POINT_PRESENT_VALUE,
-    REQ_POINT_MULTIPLE
+    REQ_POINT_MULTIPLE,
+    REQ_POINT_STATE_COUNT,
+    REQ_POINT_STATE_TEXT,
+    REQ_POINT_INACTIVE_TEXT,
+    REQ_POINT_ACTIVE_TEXT
 } REQUEST_KIND;
 
 typedef struct {

@@ -4,6 +4,7 @@
 #include "gateway.h"
 #include "mqtt_client.h"
 #include "logger.h"
+#include "tag_registry.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -179,6 +180,21 @@ static void device_timed_out(DEVICE_STATE *d)
     } else d->retry_after_ms = monotonic_ms() + 1000;
 }
 
+static bool binary_point(POINT_STATE *p)
+{
+    return p->object_type==OBJECT_BINARY_INPUT || p->object_type==OBJECT_BINARY_OUTPUT || p->object_type==OBJECT_BINARY_VALUE;
+}
+static bool multistate_point(POINT_STATE *p)
+{
+    return p->object_type==OBJECT_MULTI_STATE_INPUT || p->object_type==OBJECT_MULTI_STATE_OUTPUT || p->object_type==OBJECT_MULTI_STATE_VALUE;
+}
+static void state_text_advance(POINT_STATE *p, REQUEST_KIND kind)
+{
+    if (kind==REQ_POINT_INACTIVE_TEXT) p->metadata_step=4;
+    else if (kind==REQ_POINT_STATE_TEXT && p->state_text_index < p->state_text_count) p->state_text_index++;
+    else p->metadata_complete=true;
+}
+
 static void request_failed(bool timeout)
 {
     DEVICE_STATE *d = g_request.device;
@@ -194,8 +210,9 @@ static void request_failed(bool timeout)
     /* Optional metadata must not prevent polling. Preserve cached text on failures. */
     if (g_request.point && g_request.kind >= REQ_POINT_NAME && g_request.kind <= REQ_POINT_UNITS) {
         g_request.point->metadata_step++;
-        if (g_request.point->metadata_step >= 3) g_request.point->metadata_complete = true;
+        if (g_request.point->metadata_step >= 3 && !binary_point(g_request.point) && !multistate_point(g_request.point)) g_request.point->metadata_complete = true;
     }
+    if (g_request.point && g_request.kind >= REQ_POINT_STATE_COUNT) state_text_advance(g_request.point,g_request.kind);
     if (!timeout && g_request.kind == REQ_DEVICE_NAME) d->have_name = true;
     if (!timeout && g_request.kind == REQ_OBJECT_LIST_ITEM) d->next_object_index++;
     request_clear();
@@ -320,9 +337,13 @@ static void gateway_read_property_ack_handler(
         if (rp.object_type != g_request.point->object_type || rp.object_instance != g_request.point->object_instance) { request_failed(false); return; }
     } else if (rp.object_type != OBJECT_DEVICE || rp.object_instance != g_request.device->device_id) { request_failed(false); return; }
     BACNET_PROPERTY_ID expected = g_request.kind==REQ_POINT_PRESENT_VALUE ? PROP_PRESENT_VALUE :
+        (g_request.kind==REQ_POINT_STATE_COUNT || g_request.kind==REQ_POINT_STATE_TEXT) ? PROP_STATE_TEXT :
+        g_request.kind==REQ_POINT_INACTIVE_TEXT ? PROP_INACTIVE_TEXT : g_request.kind==REQ_POINT_ACTIVE_TEXT ? PROP_ACTIVE_TEXT :
         g_request.kind==REQ_POINT_DESCRIPTION ? PROP_DESCRIPTION : g_request.kind==REQ_POINT_UNITS ? PROP_UNITS :
         (g_request.kind==REQ_OBJECT_LIST_COUNT || g_request.kind==REQ_OBJECT_LIST_ITEM) ? PROP_OBJECT_LIST : PROP_OBJECT_NAME;
     if (rp.object_property != expected) { request_failed(false); return; }
+    if ((g_request.kind==REQ_POINT_STATE_COUNT && rp.array_index!=0) ||
+        (g_request.kind==REQ_POINT_STATE_TEXT && rp.array_index!=g_request.point->state_text_index)) { request_failed(false); return; }
     device_answered(g_request.device);
     switch (g_request.kind) {
         case REQ_DEVICE_NAME:
@@ -396,6 +417,28 @@ static void gateway_read_property_ack_handler(
             }
             break;
 
+        case REQ_POINT_STATE_COUNT: {
+            uint32_t count;
+            if (application_value_to_uint32(&value,&count) && count>0 && count<=65535) {
+                g_request.point->state_text_count=count;
+                g_request.point->state_text_index=1;
+                g_request.point->metadata_step=4;
+            } else g_request.point->metadata_complete=true;
+            break;
+        }
+        case REQ_POINT_STATE_TEXT:
+        case REQ_POINT_INACTIVE_TEXT:
+        case REQ_POINT_ACTIVE_TEXT: {
+            if (value.tag==BACNET_APPLICATION_TAG_CHARACTER_STRING) {
+                char text[MAX_CHARACTER_STRING_BYTES+1];
+                if (application_value_to_string(&value,text,sizeof(text))) {
+                    uint32_t state=g_request.kind==REQ_POINT_STATE_TEXT ? g_request.point->state_text_index : g_request.kind==REQ_POINT_ACTIVE_TEXT ? 1 : 0;
+                    tag_registry_set_state_text(g_request.device,g_request.point,state,text);
+                }
+            }
+            state_text_advance(g_request.point,g_request.kind);
+            break;
+        }
         case REQ_POINT_PRESENT_VALUE:
             if (g_request.point &&
                 application_value_to_point_value(&value, g_request.point)) {
@@ -581,11 +624,21 @@ static bool schedule_metadata(DEVICE_STATE *device, POINT_STATE *point)
 
         point->unit[0] = '\0';
         point->metadata_step = 3;
-        point->metadata_complete = true;
+        point->metadata_complete = !binary_point(point) && !multistate_point(point);
         mqtt_publish_config(device, point);
         return false;
     }
 
+    if (binary_point(point)) {
+        bool active=point->metadata_step>=4;
+        return send_read_property(active?REQ_POINT_ACTIVE_TEXT:REQ_POINT_INACTIVE_TEXT, device, point,
+            point->object_type,point->object_instance,active?PROP_ACTIVE_TEXT:PROP_INACTIVE_TEXT,BACNET_ARRAY_ALL,0);
+    }
+    if (multistate_point(point)) {
+        bool count=point->metadata_step==3;
+        return send_read_property(count?REQ_POINT_STATE_COUNT:REQ_POINT_STATE_TEXT,device,point,
+            point->object_type,point->object_instance,PROP_STATE_TEXT,count?0:point->state_text_index,0);
+    }
     point->metadata_complete = true;
     return false;
 }
@@ -594,7 +647,7 @@ static bool schedule_poll(DEVICE_STATE *device,
                           POINT_STATE *point,
                           uint64_t now)
 {
-    if (!point->metadata_complete || point->next_poll_ms > now)
+    if ((!point->metadata_complete && point->metadata_step<3) || point->next_poll_ms > now)
         return false;
 
     bool sent = send_read_property(REQ_POINT_PRESENT_VALUE,
@@ -632,7 +685,7 @@ static bool schedule_values(DEVICE_STATE *d, uint64_t now)
     for(size_t step=0;step<d->point_count;step++) {
         size_t i=d->point_cursor;d->point_cursor=(i+1)%d->point_count;
         POINT_STATE *p=&d->points[i];
-        if (!p->metadata_complete || p->next_poll_ms>now || p->retry_after_ms>now) continue;
+        if ((!p->metadata_complete && p->metadata_step<3) || p->next_poll_ms>now || p->retry_after_ms>now) continue;
         /* Schedule and strings are variable length: read them individually. */
         bool variable=p->object_type==OBJECT_CHARACTERSTRING_VALUE || p->object_type==OBJECT_SCHEDULE;
         if (variable && count) {d->point_cursor=i;break;}

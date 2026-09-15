@@ -10,6 +10,7 @@ unsigned g_poll_ms=5000,g_rp_timeout_ms=3000,g_discovery_ms=10000;
 uint64_t monotonic_ms(void){return clock_ms;}
 time_t unix_time_now(void){return 1789000000+clock_ms/1000;}
 void safe_copy(char*d,size_t n,const char*s){snprintf(d,n,"%s",s?s:"");}
+void tag_registry_set_state_text(DEVICE_STATE*d,POINT_STATE*p,uint32_t v,const char*t){(void)d;(void)p;(void)v;(void)t;}
 void mqtt_publish_config(DEVICE_STATE*d,POINT_STATE*p){(void)d;(void)p;}
 void mqtt_publish_live_if_needed(DEVICE_STATE*d,POINT_STATE*p){(void)d;(void)p;published++;}
 void tsm_free_invoke_id(uint8_t id){(void)id;active=false;failed=false;freed++;}
@@ -55,6 +56,18 @@ int main(void){
  bacnet_client_set_rpm_max(5);assert(schedule_values(b,clock_ms));assert(g_request.batch_count==5);request_clear();
  bacnet_client_set_rpm_max(1);assert(schedule_values(b,clock_ms));assert(g_request.kind==REQ_POINT_PRESENT_VALUE && b->last_poll_count==1 && b->rpm_confirmed);request_clear();
  bacnet_client_set_rpm_max(0);bacnet_client_set_rpm_max(101);assert(g_rpm_batch_max==1);
- device_table_cleanup();puts("PASS: fair polling, errors, live RPM limits, APDU bounds, unsupported-service fallback and forced single reads");
+ device_table_cleanup();
+ a=device(500,0);POINT_STATE *p=add_point(a,OBJECT_BINARY_VALUE,1);p->metadata_step=3;
+ assert(schedule_metadata(a,p) && g_request.kind==REQ_POINT_INACTIVE_TEXT);request_failed(false);
+ assert(p->metadata_step==4 && !p->metadata_complete);
+ assert(schedule_metadata(a,p) && g_request.kind==REQ_POINT_ACTIVE_TEXT);request_failed(false);assert(p->metadata_complete);
+ p=add_point(a,OBJECT_MULTI_STATE_VALUE,2);p->metadata_step=3;
+ assert(schedule_metadata(a,p) && g_request.kind==REQ_POINT_STATE_COUNT);request_failed(false);assert(p->metadata_complete);
+ p->metadata_complete=false;p->metadata_step=4;p->state_text_count=3;p->state_text_index=1;
+ assert(schedule_metadata(a,p) && g_request.kind==REQ_POINT_STATE_TEXT);request_failed(false);assert(p->state_text_index==2 && !p->metadata_complete);
+ p->next_poll_ms=0;assert(schedule_poll(a,p,clock_ms));request_clear();
+ state_text_advance(p,REQ_POINT_STATE_TEXT);assert(p->state_text_index==3);
+ state_text_advance(p,REQ_POINT_STATE_TEXT);assert(p->metadata_complete);
+ device_table_cleanup();puts("PASS: live RPM limits, APDU bounds, state metadata scheduling, optional-property errors and polling during metadata reads");
 }
 

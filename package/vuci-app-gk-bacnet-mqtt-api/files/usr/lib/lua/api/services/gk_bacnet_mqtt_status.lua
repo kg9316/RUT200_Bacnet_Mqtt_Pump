@@ -35,7 +35,7 @@ function Service:GET_TYPE_points()
         if device then
             local p = type(entry) == "string" and { t = entry } or entry
             points[#points + 1] = { t = p.t, n = p.n or "", u = p.u or "", d = p.d or "",
-                di = tonumber(device), ot = tonumber(object_type), oi = tonumber(instance) }
+                di = tonumber(device), ot = tonumber(object_type), oi = tonumber(instance), s = p.s }
         end
     end
     table.sort(points, function(a, b)

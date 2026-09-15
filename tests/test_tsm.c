@@ -10,6 +10,7 @@ unsigned g_poll_ms=5000,g_rp_timeout_ms=3000,g_discovery_ms=10000;
 uint64_t monotonic_ms(void){return clock_ms;}
 time_t unix_time_now(void){return 1789000000+clock_ms/1000;}
 void safe_copy(char*d,size_t n,const char*s){snprintf(d,n,"%s",s?s:"");}
+void tag_registry_set_state_text(DEVICE_STATE*d,POINT_STATE*p,uint32_t v,const char*t){(void)d;(void)p;(void)v;(void)t;}
 void mqtt_publish_config(DEVICE_STATE*d,POINT_STATE*p){(void)d;(void)p;}
 void mqtt_publish_live_if_needed(DEVICE_STATE*d,POINT_STATE*p){(void)d;(void)p;published++;}
 bool address_get_by_device(uint32_t id,unsigned*m,BACNET_ADDRESS*a){(void)id;*m=1460;memset(a,0,sizeof(*a));return true;}

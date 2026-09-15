@@ -204,6 +204,27 @@ void tag_registry_set_metadata(uint32_t device, unsigned type, uint32_t instance
     }
 }
 
+void tag_registry_set_state_text(DEVICE_STATE *device, POINT_STATE *point, uint32_t state, const char *text)
+{
+    char address[80], key[16];
+    struct json_object *entry, *states, *old;
+    if (!text || !tag_registry_get(device->device_id, point->object_type, point->object_instance)) return;
+    tag_registry_set_metadata(device->device_id, point->object_type, point->object_instance, point->name, point->unit, point->description);
+    snprintf(address, sizeof(address), "%lu:%u:%lu", (unsigned long)device->device_id, (unsigned)point->object_type, (unsigned long)point->object_instance);
+    if (!json_object_object_get_ex(registry, address, &entry) || !json_object_is_type(entry,json_type_object)) return;
+    if (!json_object_object_get_ex(entry, "s", &states) || !json_object_is_type(states,json_type_object)) {
+        states=json_object_new_object();
+        if (!states) return;
+        json_object_object_add(entry,"s",states);
+    }
+    snprintf(key,sizeof(key),"%lu",(unsigned long)state);
+    if (json_object_object_get_ex(states,key,&old) && json_object_is_type(old,json_type_string) && !strcmp(json_object_get_string(old),text)) return;
+    struct json_object *value=json_object_new_string(text);
+    if (!value) return;
+    json_object_object_add(states,key,value);
+    metadata_dirty=true;
+}
+
 void tag_registry_set_device_name(uint32_t device, const char *name)
 {
     struct json_object *names, *old;

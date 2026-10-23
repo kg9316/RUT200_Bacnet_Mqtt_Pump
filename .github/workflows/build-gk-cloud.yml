@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 57: RutOS 00.07.24.6, first-message metadata and min/max send times.
+# Release 58: manual BACnet/IP endpoints and persistent point polling selection.
 
 on:
   workflow_dispatch:

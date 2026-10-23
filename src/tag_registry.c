@@ -18,6 +18,9 @@ static struct json_object *identity_index;
 static bool metadata_dirty;
 static uint64_t next_metadata_flush;
 
+static bool valid_controls(struct json_object *cfg);
+static void refresh_manual_flags(void);
+
 static const char *entry_tag(struct json_object *entry)
 {
     struct json_object *tag = entry;
@@ -56,6 +59,10 @@ int tag_registry_init(void)
     seen = json_object_new_object();
     if (!seen) goto invalid;
     json_object_object_foreach(registry, key, value) {
+        if (!strcmp(key, "_cfg")) {
+            if (!valid_controls(value)) { json_object_put(seen); goto invalid; }
+            continue;
+        }
         if (!strcmp(key, "_dn")) {
             if (!json_object_is_type(value, json_type_object)) { json_object_put(seen); goto invalid; }
             json_object_object_foreach(value, device_key, name) {
@@ -65,6 +72,9 @@ int tag_registry_init(void)
             }
             continue;
         }
+        struct json_object *flag=NULL;
+        if(json_object_is_type(value,json_type_object) && json_object_object_get_ex(value,"x",&flag) &&
+            !json_object_is_type(flag,json_type_boolean)){json_object_put(seen);goto invalid;}
         struct json_object *duplicate;
         const char *id = entry_tag(value);
         (void)key;
@@ -276,6 +286,7 @@ void tag_registry_flush_metadata(void)
 void tag_registry_restore_devices(void)
 {
     if (!registry) return;
+    refresh_manual_flags();
     struct json_object *names;
     if (json_object_object_get_ex(registry, "_dn", &names)) {
         json_object_object_foreach(names, key, name) {
@@ -293,6 +304,8 @@ void tag_registry_restore_devices(void)
         if (!d) continue;
         POINT_STATE *p = add_point(d, (BACNET_OBJECT_TYPE)ot, oi);
         if (!p || !json_object_is_type(entry, json_type_object)) continue;
+        struct json_object *disabled;
+        p->poll_disabled = json_object_object_get_ex(entry,"x",&disabled) && json_object_get_boolean(disabled);
         p->metadata_synced = false;
         d->metadata_done = false;
         const char *keys[] = {"n", "u", "d"};
@@ -306,4 +319,5 @@ void tag_registry_restore_devices(void)
     }
 }
 
+#include "tag_controls.inc"
 #include "tag_import.inc"

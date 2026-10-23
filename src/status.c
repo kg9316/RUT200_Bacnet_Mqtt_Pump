@@ -32,6 +32,9 @@ void status_write_now(void)
         if(!d->used) continue;
         struct json_object *row=json_object_new_object();
         NUM(row,"id",d->device_id); STR(row,"name",d->name);
+        size_t enabled=0;for(size_t k=0;k<d->point_count;k++)if(!d->points[k].poll_disabled)++enabled;
+        NUM(row,"enabledPoints",enabled);
+        BOOL(row,"newPointsEnabled",tag_registry_new_points_enabled(d->device_id));
         NUM(row,"points",d->point_count); STR(row,"state",d->state==1?"online":d->state==2?"offline":"unknown");
         NUM(row,"lastResponse",d->last_response); NUM(row,"rpmBatch",d->rpm_limit);
         const char *mode = g_rpm_batch_max==1 ? "single_configured" : d->rpm_unsupported ? "single_unsupported" :

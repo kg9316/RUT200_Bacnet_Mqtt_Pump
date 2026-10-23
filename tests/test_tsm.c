@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include "../src/bacnet_client.c"
 #include "../src/device_table.c"
+bool tag_registry_is_manual(uint32_t id){(void)id;return false;}
+void tag_registry_init_point(DEVICE_STATE*d,POINT_STATE*p){(void)d;(void)p;}
+void tag_registry_manual_seen(uint32_t d,const BACNET_ADDRESS*a){(void)d;(void)a;}
 static uint64_t clock_ms=100000;
 static bool failed=false,active=false;
 static unsigned freed=0,published=0;

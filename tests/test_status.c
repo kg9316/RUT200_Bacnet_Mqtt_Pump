@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #define STATUS_FILE "test-status.json"
 #include "../src/status.c"
+bool tag_registry_new_points_enabled(uint32_t id){(void)id;return true;}
 DEVICE_STATE g_devices[MAX_DEVICES];
 bool g_enabled=true,g_bacnet_active=true;
 unsigned long g_bacnet_reads=10,g_bacnet_replies=9,g_bacnet_timeouts=1,g_bacnet_errors=0;

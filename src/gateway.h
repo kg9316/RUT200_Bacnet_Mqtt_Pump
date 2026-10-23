@@ -49,6 +49,7 @@ typedef struct {
     char name[NAME_LEN];
     char description[DESC_LEN];
     char unit[UNIT_LEN];
+    bool poll_disabled;
     bool metadata_complete;
     bool metadata_synced;
     bool config_published;
@@ -73,6 +74,7 @@ typedef struct {
 
 typedef struct {
     bool used;
+    bool manual_endpoint;
     uint32_t device_id;
     char name[NAME_LEN];
     bool have_name;

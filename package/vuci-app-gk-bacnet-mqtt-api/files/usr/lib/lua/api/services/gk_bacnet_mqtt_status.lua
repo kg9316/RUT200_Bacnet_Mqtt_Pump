@@ -25,7 +25,7 @@ function Service:GET_TYPE_status()
     local import_raw = read_file("/tmp/gk-bacnet-mqtt-import/result.json")
     local imported = import_raw and json.parse(import_raw) or {}
     return self:ResponseOK({ running = snapshot.running == true, status = json.stringify(snapshot),
-        id=imported.id, ok=imported.ok, error=imported.error, added=imported.added, updated=imported.updated })
+        id=imported.id, ok=imported.ok, error=imported.error, added=imported.added, updated=imported.updated, rows=imported.rows, total=imported.total, changed=imported.changed, manual=imported.manual, newEnabled=imported.newEnabled })
 end
 
 function Service:GET_TYPE_points()
@@ -38,7 +38,7 @@ function Service:GET_TYPE_points()
         if device then
             local p = type(entry) == "string" and { t = entry } or entry
             points[#points + 1] = { t = p.t, n = p.n or "", u = p.u or "", d = p.d or "",
-                di = tonumber(device), ot = tonumber(object_type), oi = tonumber(instance), s = p.s }
+                di = tonumber(device), ot = tonumber(object_type), oi = tonumber(instance), s = p.s, x = p.x }
         end
     end
     table.sort(points, function(a, b)
@@ -49,7 +49,7 @@ function Service:GET_TYPE_points()
     local cursor = uci.cursor()
     local controller = cursor:get("gk_bacnet_mqtt", "main", "controller_id") or ""
     return self:ResponseOK({ schemaVersion = 2, controllerId = controller,
-        exportedAt = os.date("!%Y-%m-%dT%H:%M:%SZ"), devices = registry and registry._dn or {}, points = points })
+        exportedAt = os.date("!%Y-%m-%dT%H:%M:%SZ"), devices = registry and registry._dn or {}, _cfg = registry and registry._cfg or {}, points = points })
 end
 
 function Service:GET_TYPE_interfaces()

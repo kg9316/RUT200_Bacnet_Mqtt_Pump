@@ -59,10 +59,10 @@ local function import_points(self)
     local fs = require("nixio.fs")
     local dir = "/tmp/gk-bacnet-mqtt-import"
     local data = self.arguments and self.arguments.data
-    if type(data) ~= "table" or type(data.id) ~= "string" or #data.id > 64 or type(data.document) ~= "table" then
+    if type(data) ~= "table" or type(data.id) ~= "string" or #data.id > 64 or (type(data.document) ~= "table" and type(data.action) ~= "string") then
         return self:ResponseError("Invalid import request")
     end
-    local text = json.stringify({id=data.id,document=data.document})
+    local text = json.stringify(data)
     if not text or #text > 2*1024*1024 then return self:ResponseError("Maximum upload size is 2 MB") end
     if not fs.mkdir(dir .. "/busy","700") then return self:ResponseError("Import busy or gateway is not running") end
     local f = io.open(dir .. "/request.tmp","w")
@@ -91,6 +91,11 @@ local function do_put(self)
             os.remove(path .. ".tmp");return self:ResponseError("Unable to clear gateway log view")
         end
         return self:ResponseOK({cleared=true})
+    end
+    if type(body)=="table" and body.action then
+        local allowed={manual_list=true,manual_save=true,manual_remove=true,point_list=true,point_set=true,new_points=true}
+        if not allowed[body.action] then return self:ResponseError("Unknown action") end
+        return import_points(self)
     end
     if type(body) == "table" and body.document ~= nil then
         return import_points(self)

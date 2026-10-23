@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include "../src/bacnet_client.c"
 #include "../src/device_table.c"
+bool tag_registry_is_manual(uint32_t id){DEVICE_STATE*d=find_device(id);return d&&d->manual_endpoint;}
+void tag_registry_init_point(DEVICE_STATE*d,POINT_STATE*p){(void)d;(void)p;}
+void tag_registry_manual_seen(uint32_t d,const BACNET_ADDRESS*a){(void)d;(void)a;}
 static uint64_t clock_ms=100000;
 static bool failed=false,active=false;
 static unsigned freed=0,published=0;
@@ -27,6 +30,18 @@ size_t characterstring_length(BACNET_CHARACTER_STRING*s){return s->length;}
 char *characterstring_value(BACNET_CHARACTER_STRING*s){return s->value;}
 static DEVICE_STATE *device(unsigned id,unsigned points){DEVICE_STATE*d=get_or_create_device(id);d->have_name=d->have_object_count=d->object_list_complete=true;d->state=1;d->rpm_limit=1;for(unsigned i=0;i<points;i++){POINT_STATE*p=add_point(d,OBJECT_ANALOG_INPUT,i);p->metadata_complete=true;}return d;}
 int main(void){
+ DEVICE_STATE *disabled=device(42,3);
+ for(unsigned i=0;i<3;i++)disabled->points[i].poll_disabled=true;
+ assert(!schedule_values(disabled,clock_ms));
+ assert(!schedule_poll(disabled,&disabled->points[0],clock_ms));
+ disabled->points[1].poll_disabled=false;disabled->values_check_ms=0;
+ assert(schedule_values(disabled,clock_ms));assert(g_request.point==&disabled->points[1]);request_clear();
+ disabled->points[2].poll_disabled=false;disabled->rpm_limit=30;disabled->values_check_ms=0;
+ assert(schedule_values(disabled,clock_ms));assert(g_request.batch_count==2);
+ for(unsigned j=0;j<g_request.batch_count;j++)assert(g_request.batch[j]!=0);
+ request_clear();
+ device_table_cleanup();
+
  DEVICE_STATE*a=device(100,3),*b=device(200,3);
  scheduler_run();assert(g_request.device==a);failed=true;scheduler_run();assert(!g_request.active&&freed==1);assert(a->points[0].retry_after_ms>clock_ms);
  scheduler_run();assert(g_request.device==b);request_clear();

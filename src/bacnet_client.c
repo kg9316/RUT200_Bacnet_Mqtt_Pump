@@ -308,6 +308,7 @@ static void gateway_i_am_handler(uint8_t *request,
          * because nothing was ever transmitted). address_add() has the
          * missing "allocate a free slot" fallback. */
         address_add(device_id, max_apdu, src);
+        tag_registry_manual_seen(device_id, src);
         DEVICE_STATE *d = get_or_create_device(device_id);
         if (d) {
             d->max_apdu = max_apdu;
@@ -392,8 +393,10 @@ static void gateway_read_property_ack_handler(
             uint32_t instance;
 
             if (application_value_to_object_id(&value, &type, &instance)) {
-                if (type != OBJECT_DEVICE)
-                    add_point(g_request.device, type, instance);
+                if (type != OBJECT_DEVICE) {
+                    POINT_STATE *point=add_point(g_request.device, type, instance);
+                    if (point) tag_registry_init_point(g_request.device,point);
+                }
 
                 if (g_request.object_list_index >= g_request.device->object_count)
                     g_request.device->object_list_complete = true;
@@ -664,7 +667,7 @@ static bool schedule_poll(DEVICE_STATE *device,
                           POINT_STATE *point,
                           uint64_t now)
 {
-    if ((!point->metadata_complete && point->metadata_step<3) || point->next_poll_ms > now)
+    if (point->poll_disabled || (!point->metadata_complete && point->metadata_step<3) || point->next_poll_ms > now)
         return false;
 
     bool sent = send_read_property(REQ_POINT_PRESENT_VALUE,
@@ -702,7 +705,7 @@ static bool schedule_values(DEVICE_STATE *d, uint64_t now)
     for(size_t step=0;step<d->point_count;step++) {
         size_t i=d->point_cursor;d->point_cursor=(i+1)%d->point_count;
         POINT_STATE *p=&d->points[i];
-        if ((!p->metadata_complete && p->metadata_step<3) || p->next_poll_ms>now || p->retry_after_ms>now) continue;
+        if (p->poll_disabled || (!p->metadata_complete && p->metadata_step<3) || p->next_poll_ms>now || p->retry_after_ms>now) continue;
         /* Schedule and strings are variable length: read them individually. */
         bool variable=p->object_type==OBJECT_CHARACTERSTRING_VALUE || p->object_type==OBJECT_SCHEDULE;
         if (variable && count) {d->point_cursor=i;break;}
@@ -767,7 +770,7 @@ static void scheduler_run(void)
             /* WhoIs already checks presence. Do not repeatedly unicast-probe a
              * silent offline device; a fresh I-Am makes it eligible again.
              * I-Am alone never clears read failures or bypasses the budget. */
-            if (d->state==2 && (!d->last_iam_ms || now-d->last_iam_ms > (uint64_t)g_discovery_ms*3)) continue;
+            if (d->state==2 && !tag_registry_is_manual(d->device_id) && (!d->last_iam_ms || now-d->last_iam_ms > (uint64_t)g_discovery_ms*3)) continue;
             if (now < next_recovery_ms) continue;
             if(send_read_property(REQ_DEVICE_NAME,d,NULL,OBJECT_DEVICE,d->device_id,PROP_OBJECT_NAME,BACNET_ARRAY_ALL,0)) {
                 next_recovery_ms = now + (uint64_t)g_rp_timeout_ms * 10 + 1000;
@@ -866,6 +869,22 @@ void bacnet_client_loop(void)
     uint16_t pdu_len;
     uint64_t now = monotonic_ms();
     unsigned interval_ms;
+    /* Spread manual discovery across loop iterations: at most ten per second. */
+    static size_t manual_index;
+    static uint64_t manual_next;
+    if (now >= manual_next) {
+        BACNET_ADDRESS target; int32_t id;
+        if (tag_registry_manual_target(manual_index,&target,&id)) {
+            if (id >= 0) {
+                BACNET_ADDRESS known; unsigned apdu;
+                if (!address_get_by_device((uint32_t)id,&apdu,&known) || known.net || known.mac_len!=6 || memcmp(known.mac,target.mac,6))
+                    address_add((uint32_t)id,480,&target);
+                get_or_create_device((uint32_t)id);
+            }
+            Send_WhoIs_Remote(&target,id,id);
+            ++manual_index; manual_next=now+100;
+        } else { manual_index=0; manual_next=now+g_discovery_ms; }
+    }
 
     if (now >= g_next_discovery_ms) {
         interval_ms = (device_count() == 0 && DISCOVERY_EMPTY_MS < g_discovery_ms)

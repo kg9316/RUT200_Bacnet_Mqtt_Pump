@@ -118,7 +118,7 @@ void mqtt_publish_config(DEVICE_STATE *device, POINT_STATE *point)
     char topic[TOPIC_LEN];
     char payload[PAYLOAD_LEN];
 
-    if (g_mqtt_settings.gk_cloud) return;
+    if (point->poll_disabled || g_mqtt_settings.gk_cloud) return;
 
     if (!point->metadata_complete)
         return;
@@ -144,7 +144,7 @@ void mqtt_publish_live_if_needed(DEVICE_STATE *device, POINT_STATE *point)
     char topic[TOPIC_LEN];
     char payload[PAYLOAD_LEN];
 
-    if (!point->have_value)
+    if (point->poll_disabled || !point->have_value)
         return;
 
     uint64_t now_ms = monotonic_ms();

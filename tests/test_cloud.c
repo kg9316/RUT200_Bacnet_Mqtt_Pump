@@ -290,12 +290,59 @@ static void test_imports(void)
     puts("PASS: raw/export import, merge preservation, restart persistence, controller/GUID/state validation and rejected imports leave registry unchanged");
 }
 
+
+static struct json_object *run_control(const char *text,bool success)
+{
+    struct json_object *req=json_tokener_parse(text),*result=json_object_new_object();
+    const char *error=control_request(req,result);
+    if(success && error)fprintf(stderr,"Control error: %s\n",error);
+    assert((error==NULL)==success);json_object_put(req);return result;
+}
+static void test_controls(void)
+{
+    tag_registry_cleanup();device_table_cleanup();write_registry("{}");assert(tag_registry_init()==0);
+    struct json_object *result=run_control("{\"action\":\"manual_save\",\"target\":{\"ip\":\"10.0.0.9\",\"p\":47809,\"n\":\"Manual\"}}",true);json_object_put(result);
+    BACNET_ADDRESS a;int32_t id;
+    assert(tag_registry_manual_target(0,&a,&id)&&id==-1&&a.mac[3]==9&&a.mac[5]==193);
+    tag_registry_manual_seen(123,&a);assert(tag_registry_is_manual(123));
+    result=run_control("{\"action\":\"manual_save\",\"target\":{\"ip\":\"10.0.0.10\",\"p\":47808,\"id\":123}}",false);json_object_put(result);
+    result=run_control("{\"action\":\"manual_save\",\"target\":{\"ip\":\"255.255.255.255\",\"p\":47808}}",false);json_object_put(result);
+    result=run_control("{\"action\":\"new_points\",\"device\":123,\"enabled\":false}",true);json_object_put(result);
+    DEVICE_STATE *d=find_device(123);
+    for(unsigned i=0;i<205;i++) {
+        POINT_STATE *p=add_point(d,OBJECT_ANALOG_INPUT,i);assert(p);
+        snprintf(p->name,sizeof(p->name),"Supply %u",i);tag_registry_init_point(d,p);assert(p->poll_disabled);
+    }
+    char guid[37];safe_copy(guid,sizeof(guid),tag_registry_lookup(123,0,0));
+    result=run_control("{\"action\":\"point_list\",\"device\":123,\"q\":\"SUPPLY\",\"page\":1}",true);
+    assert(json_object_get_int(field(result,"total"))==205 && json_object_array_length(field(result,"rows"))==100);json_object_put(result);
+    result=run_control("{\"action\":\"point_list\",\"device\":123,\"page\":2}",true);
+    assert(json_object_array_length(field(result,"rows"))==5);json_object_put(result);
+    result=run_control("{\"action\":\"point_set\",\"device\":123,\"q\":\"supply\",\"all\":true,\"enabled\":true}",true);
+    assert(json_object_get_int(field(result,"changed"))==205);json_object_put(result);
+    result=run_control("{\"action\":\"point_set\",\"device\":123,\"keys\":[\"0:0\"],\"enabled\":false}",true);json_object_put(result);
+    assert(d->points[0].poll_disabled && !d->points[1].poll_disabled);
+    assert(!strcmp(guid,tag_registry_lookup(123,0,0)));
+    tag_registry_cleanup();device_table_cleanup();assert(tag_registry_init()==0);tag_registry_restore_devices();
+    d=find_device(123);assert(d && d->point_count==205 && d->points[0].poll_disabled && !d->points[1].poll_disabled);
+    assert(!tag_registry_new_points_enabled(123) && tag_registry_is_manual(123));
+    assert(!strcmp(guid,tag_registry_lookup(123,0,0)));
+    assert(tag_registry_manual_target(0,&a,&id)&&id==123);
+    struct json_object *doc=json_tokener_parse(json_object_to_json_string(registry));unsigned added,updated;
+    assert(!import_document(doc,&added,&updated));json_object_put(doc);
+    assert(find_device(123)->points[0].poll_disabled && !tag_registry_new_points_enabled(123));
+    result=run_control("{\"action\":\"point_set\",\"device\":123,\"all\":true,\"enabled\":true,\"state\":\"oops\"}",false);json_object_put(result);
+    device_table_cleanup();tag_registry_cleanup();
+    puts("PASS: manual endpoints, duplicate rejection, paging, filtered bulk edits, disabled defaults, stable GUIDs and persisted/imported selections");
+}
+
 int main(void)
 {
     test_guids();
     test_messages();
     test_tokens();
     test_imports();
+    test_controls();
     tag_registry_cleanup();
     remove(TAG_REGISTRY_PATH);
     puts("PASS: persistent unique GUIDs, corruption handling, first-publication metadata, compact subsequent values, token renewal/expiry");

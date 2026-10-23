@@ -13,4 +13,9 @@ void tag_registry_set_metadata(uint32_t device, unsigned type, uint32_t instance
 void tag_registry_flush_metadata(void);
 void tag_registry_import_if_due(void);
 void tag_registry_set_state_text(DEVICE_STATE *device, POINT_STATE *point, uint32_t state, const char *text);
+bool tag_registry_new_points_enabled(uint32_t device);
+void tag_registry_init_point(DEVICE_STATE *device, POINT_STATE *point);
+bool tag_registry_manual_target(size_t index, BACNET_ADDRESS *address, int32_t *id);
+void tag_registry_manual_seen(uint32_t device, const BACNET_ADDRESS *address);
+bool tag_registry_is_manual(uint32_t device);
 #endif

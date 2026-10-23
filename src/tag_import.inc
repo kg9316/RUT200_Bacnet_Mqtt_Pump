@@ -44,6 +44,11 @@ static const char *import_entry(struct json_object *entries, const char *address
         if (!import_text(v,limits[i])) { json_object_put(entry);return "Invalid or oversized point metadata"; }
         json_object_object_add(entry,shorts[i],json_object_get(v));
     }
+    struct json_object *disabled=import_field(input,"x",NULL);
+    if(disabled) {
+        if(!json_object_is_type(disabled,json_type_boolean)){json_object_put(entry);return "Invalid polling flag";}
+        json_object_object_add(entry,"x",json_object_get(disabled));
+    }
     struct json_object *states=import_field(input,"s",NULL);
     if (states) {
         if (!json_object_is_type(states,json_type_object)) {json_object_put(entry);return "Invalid state text mapping";}
@@ -88,7 +93,7 @@ static const char *import_document(struct json_object *doc, unsigned *added, uns
     } else {
         names=import_field(doc,"_dn",NULL);
         json_object_object_foreach(doc,key,value) {
-            if (!strcmp(key,"_dn")) continue;
+            if (!strcmp(key,"_dn") || !strcmp(key,"_cfg")) continue;
             if ((error=import_entry(entries,key,value))) goto done;
         }
     }
@@ -123,9 +128,14 @@ static const char *import_document(struct json_object *doc, unsigned *added, uns
             json_object_object_add(dest,canonical,json_object_get(name));
         }
     }
+    struct json_object *cfg=field(doc,"_cfg");
+    if(cfg) {
+        if(!valid_controls(cfg)){error="Invalid device settings";goto done;}
+        json_object_object_add(candidate,"_cfg",json_object_get(cfg));
+    }
     seen=json_object_new_object();counts=json_object_new_object();
     json_object_object_foreach(candidate,key,value) {
-        if (!strcmp(key,"_dn")) continue;
+        if (!strcmp(key,"_dn") || !strcmp(key,"_cfg")) continue;
         const char *tag=entry_tag(value);struct json_object *v;unsigned di,ot,oi;char device[16];
         if (!tag || json_object_object_get_ex(seen,tag,&v)) {error="Duplicate GUID assigned to different points";goto done;}
         json_object_object_add(seen,tag,json_object_new_boolean(true));
@@ -181,7 +191,10 @@ void tag_registry_import_if_due(void)
     if (st.st_size>0 && st.st_size<=IMPORT_LIMIT+1024) request=json_object_from_file(IMPORT_DIR "/request.json");
     if (request) {
         id=import_field(request,"id",NULL);
-        if (import_text(id,64)) error=import_document(import_field(request,"document",NULL),&added,&updated);
+        if (import_text(id,64)) {
+            if(field(request,"action"))error=control_request(request,result);
+            else error=import_document(import_field(request,"document",NULL),&added,&updated);
+        }
     }
     if (id && import_text(id,64)) json_object_object_add(result,"id",json_object_get(id));
     json_object_object_add(result,"ok",json_object_new_boolean(!error));
@@ -194,7 +207,7 @@ void tag_registry_import_if_due(void)
     }
     unlink(IMPORT_DIR "/request.json");
     rmdir(IMPORT_DIR "/busy");
-    LOG_INFOF("GUID import %s: added=%u existing=%u",error?"rejected":"completed",error?0:added,error?0:updated);
+    if(!field(request,"action")) LOG_INFOF("GUID import %s: added=%u existing=%u",error?"rejected":"completed",error?0:added,error?0:updated);
     if (request) json_object_put(request);
     json_object_put(result);
 }

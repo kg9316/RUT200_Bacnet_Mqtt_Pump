@@ -153,6 +153,9 @@ int main(void)
     mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued && point.last_pub_numeric==3);
     g_enabled=true;
     mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued && point.last_pub_numeric==5);
+    point.poll_disabled=true;point.numeric_value=99;point.have_published_value=false;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
+    mqtt_publish_config(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
     mqtt_client_cleanup();
     g_devices[0].points=NULL;g_devices[0].point_count=0;
     puts("PASS: verified TLS, GK identity/password, token renewal reconnect, expiry disconnect, no plaintext fallback, generic mode");

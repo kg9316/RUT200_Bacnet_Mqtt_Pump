@@ -35,6 +35,7 @@ char g_topic_root[128] = "bacnet";
 unsigned g_poll_ms = DEFAULT_POLL_MS;
 unsigned g_discovery_ms = DEFAULT_DISCOVERY_MS;
 unsigned g_max_age_sec = DEFAULT_MAX_AGE_SEC;
+unsigned g_min_send_sec = DEFAULT_MIN_SEND_SEC;
 unsigned g_rp_timeout_ms = DEFAULT_RP_TIMEOUT_MS;
 char g_bacnet_interface[64] = DEFAULT_BACNET_IF;
 bool g_enabled = true;
@@ -70,18 +71,21 @@ static void mqtt_on_disconnect(struct mosquitto *mosq, void *userdata, int rc)
     if (rc) mqtt_error("disconnected", rc);
 }
 
-static void mqtt_publish_raw(const char *topic, const char *payload, bool retain)
+static bool mqtt_publish_raw(const char *topic, const char *payload, bool retain)
 {
     int rc;
 
     if (!g_enabled || !g_mosq || !g_mqtt_connected)
-        return;
+        return false;
 
     rc = mosquitto_publish(g_mosq, NULL, topic, (int)strlen(payload), payload, 0, retain);
     if (rc != MOSQ_ERR_SUCCESS) {
         mqtt_error("publish failed", rc);
         g_mqtt_connected = false;
-    } else ++g_mqtt_diagnostics.queued;
+        return false;
+    }
+    ++g_mqtt_diagnostics.queued;
+    return true;
 }
 
 static void mqtt_make_point_topic(char *dst, size_t n, const char *branch,
@@ -143,8 +147,14 @@ void mqtt_publish_live_if_needed(DEVICE_STATE *device, POINT_STATE *point)
     if (!point->have_value)
         return;
 
-    expired = !point->have_published_value || !point->last_publish ||
-              (unsigned)(now - point->last_publish) >= g_max_age_sec;
+    uint64_t now_ms = monotonic_ms();
+    uint64_t elapsed_ms = now_ms - point->last_publish_ms;
+    /* First value bypasses the limiter. Subsequent attempts use the latest
+     * polled value, with no queue or timer per point. */
+    if (point->have_published_value && elapsed_ms < (uint64_t)g_min_send_sec * 1000)
+        return;
+    expired = !point->have_published_value ||
+              (g_max_age_sec > 0 && elapsed_ms >= (uint64_t)g_max_age_sec * 1000);
 
     switch (point->value_kind) {
         case VALUE_NUMBER:
@@ -170,8 +180,10 @@ void mqtt_publish_live_if_needed(DEVICE_STATE *device, POINT_STATE *point)
     if (g_mqtt_settings.gk_cloud) {
         char *message = gk_cloud_message(device, point, topic, sizeof(topic));
         if (!message) return;
-        mqtt_publish_raw(topic, message, false);
+        bool accepted = mqtt_publish_raw(topic, message, false);
         free(message);
+        if (!accepted) return;
+        point->config_published = true;
         goto published;
     }
 
@@ -194,13 +206,14 @@ void mqtt_publish_live_if_needed(DEVICE_STATE *device, POINT_STATE *point)
                  (long long)now);
     }
 
-    mqtt_publish_raw(topic, payload, false);
+    if (!mqtt_publish_raw(topic, payload, false)) return;
 published:
     if (!g_mqtt_connected)
         return;
 
     point->have_published_value = true;
     point->last_publish = now;
+    point->last_publish_ms = now_ms;
 
     if (point->value_kind == VALUE_NUMBER || point->value_kind == VALUE_ENUM)
         point->last_pub_numeric = point->numeric_value;

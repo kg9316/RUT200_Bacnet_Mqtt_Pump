@@ -16,6 +16,7 @@ static char used_id[160], used_user[128], used_password[128];
 static void (*connected_cb)(struct mosquitto *, void *, int);
 static void (*published_cb)(struct mosquitto *, void *, int);
 static int publish_failure;
+static bool message_had_metadata;
 uint64_t monotonic_ms(void) { return clock_ms; }
 time_t unix_time_now(void) { return 1788180633; }
 void safe_copy(char *d, size_t n, const char *s) { snprintf(d, n, "%s", s ? s : ""); }
@@ -28,7 +29,7 @@ void gk_cloud_loop(void) {}
 void gk_cloud_invalidate(void) { test_token = NULL; }
 const char *gk_cloud_token(void) { return test_token; }
 unsigned gk_cloud_token_generation(void) { return test_generation; }
-char *gk_cloud_message(const DEVICE_STATE *d, const POINT_STATE *p, char *t, size_t n) { (void)d; (void)p; (void)t; (void)n; return NULL; }
+char *gk_cloud_message(const DEVICE_STATE *d, const POINT_STATE *p, char *t, size_t n) { (void)d; safe_copy(t,n,"test/point"); message_had_metadata=!p->config_published; return strdup("{}"); }
 int tag_registry_init(void) { return 0; }
 void tag_registry_cleanup(void) {}
 int mosquitto_lib_init(void) { return 0; }
@@ -57,6 +58,7 @@ int mosquitto_publish(struct mosquitto *m,int *mid,const char *topic,int length,
 
 int main(void)
 {
+    g_min_send_sec=0;
     g_mqtt_settings.gk_cloud = true;
     g_mqtt_settings.tls = true;
     safe_copy(g_mqtt_settings.controller_id,sizeof(g_mqtt_settings.controller_id),"controller-test");
@@ -80,11 +82,29 @@ int main(void)
     assert(g_mqtt_diagnostics.queued == 1 && g_mqtt_diagnostics.failures == 1);
     assert(strstr(g_mqtt_diagnostics.error, "publish failed"));
     publish_failure = 0;
+    POINT_STATE point={0};
+    point.have_value=true;point.value_kind=VALUE_NUMBER;point.numeric_value=12;
+    g_devices[0].points=&point;g_devices[0].point_count=1;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);
+    assert(!point.config_published && !point.have_published_value); /* Offline retry retains metadata. */
+    connected_cb(g_mosq,NULL,0);
+    publish_failure=MOSQ_ERR_NO_CONN;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);
+    assert(!point.config_published && !point.have_published_value);
+    publish_failure=0;connected_cb(g_mosq,NULL,0);
+    mqtt_publish_live_if_needed(&g_devices[0],&point);
+    assert(message_had_metadata && point.config_published && point.have_published_value);
+    point.numeric_value=13;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);
+    assert(!message_had_metadata);
     test_token = "renewed-token";
     test_generation++;
     mqtt_client_loop();
     assert(connect_calls == 2 && destroy_calls == 1);
     assert(strcmp(used_password,"renewed-token") == 0);
+    assert(!point.config_published);
+    mqtt_publish_live_if_needed(&g_devices[0],&point);
+    assert(message_had_metadata && point.config_published);
     test_token = NULL;
     mqtt_client_loop();
     assert(!mqtt_client_is_connected() && connect_calls == 2);
@@ -106,7 +126,35 @@ int main(void)
     mqtt_client_loop();assert(connect_calls==connections_before);
     g_enabled=true;
     mqtt_client_loop();assert(mqtt_client_is_connected() && connect_calls==connections_before+1);
+    /* COV-only mode, per-point minimum, first value and failed-send retries. */
+    g_max_age_sec=0;g_min_send_sec=300;
+    memset(&point,0,sizeof(point));point.have_value=true;point.value_kind=VALUE_NUMBER;point.numeric_value=1;
+    clock_ms=100000;
+    unsigned queued=g_mqtt_diagnostics.queued;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);
+    assert(g_mqtt_diagnostics.queued==++queued); /* First value is immediate. */
+    point.numeric_value=2;clock_ms+=299999;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
+    point.numeric_value=3;clock_ms++;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued && point.last_pub_numeric==3);
+    clock_ms+=86400000;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued); /* No periodic sending. */
+    point.numeric_value=4;clock_ms=point.last_publish_ms+1000;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);
+    point.numeric_value=3;clock_ms+=300000;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued); /* Change returned to baseline. */
+    g_max_age_sec=60;
+    clock_ms=point.last_publish_ms+60000;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued); /* Min takes priority. */
+    clock_ms=point.last_publish_ms+300000;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
+    g_max_age_sec=0;g_min_send_sec=0;point.numeric_value=5;
+    g_enabled=false;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued && point.last_pub_numeric==3);
+    g_enabled=true;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued && point.last_pub_numeric==5);
     mqtt_client_cleanup();
+    g_devices[0].points=NULL;g_devices[0].point_count=0;
     puts("PASS: verified TLS, GK identity/password, token renewal reconnect, expiry disconnect, no plaintext fallback, generic mode");
     return 0;
 }

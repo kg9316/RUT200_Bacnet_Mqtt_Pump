@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 56: restore authoritative GUIDs through the self-service JSON import.
+# Release 57: first-message metadata, min/max send times and readable interval units.
 
 on:
   workflow_dispatch:

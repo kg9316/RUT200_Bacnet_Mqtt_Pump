@@ -61,6 +61,7 @@ void status_write_now(void)
     BOOL(root,"mqttTls",g_mqtt_settings.tls); STR(root,"mqttMode",g_mqtt_settings.gk_cloud ? "gk_cloud":"generic");
     STR(root,"topicRoot",g_topic_root);
     NUM(root,"pollMs",g_poll_ms); NUM(root,"discoveryMs",g_discovery_ms); NUM(root,"maxAgeSec",g_max_age_sec);
+    NUM(root,"minSendSec",g_min_send_sec);
     NUM(root,"timestamp",unix_time_now());
     NUM(root,"mqttQueued",g_mqtt_diagnostics.queued); NUM(root,"mqttSent",g_mqtt_diagnostics.sent);
     NUM(root,"mqttErrors",g_mqtt_diagnostics.failures); NUM(root,"mqttLastSent",g_mqtt_diagnostics.last_sent);

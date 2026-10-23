@@ -47,3 +47,15 @@ for _,v in ipairs({"1","30","100"}) do
     assert(service:POST_TYPE_config().ok and values.rpm_batch_max==v)
 end
 print("PASS: RPM configuration limits and persistence")
+for _,key in ipairs({"max_age_sec","min_send_sec"}) do
+    for _,v in ipairs({"0","300","86400"}) do
+        service.arguments={data={[key]=v}}
+        assert(service:POST_TYPE_config().ok and values[key]==v)
+        assert(service:GET_TYPE_config().data[key]==v)
+    end
+    for _,v in ipairs({"-1","86401","0.5","bad"}) do
+        service.arguments={data={[key]=v}}
+        assert(not service:POST_TYPE_config().ok and values[key]=="86400")
+    end
+end
+print("PASS: min/max send time validation, zero settings and persistence")

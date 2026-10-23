@@ -78,6 +78,7 @@ static void reload_from_disk(bool initial)
     g_poll_ms = (unsigned)strtoul(OPT("poll_ms", "5000"), NULL, 10);
     g_discovery_ms = (unsigned)strtoul(OPT("discovery_ms", "10000"), NULL, 10);
     g_max_age_sec = (unsigned)strtoul(OPT("max_age_sec", "300"), NULL, 10);
+    g_min_send_sec = (unsigned)strtoul(OPT("min_send_sec", "300"), NULL, 10);
     g_enabled = strcmp(OPT("enabled", "1"), "1") == 0;
     safe_copy(interface, sizeof(interface), OPT("bacnet_interface", DEFAULT_BACNET_IF));
     if (strcmp(interface, g_bacnet_interface) != 0) {

@@ -119,8 +119,11 @@ export default {
         topic_root: '',
         rpm_batch_max: '30',
         poll_ms: '',
+        poll_sec: '',
         discovery_ms: '',
+        discovery_min: '',
         max_age_sec: '',
+        min_send_sec: '300',
       },
       saveMessage: '',
       saveError: false,
@@ -187,9 +190,10 @@ export default {
         { key: 'controller_license', label: this.$t('Controller license'), type: 'password' },
         { key: 'topic_root', label: this.$t('Topic root'), type: 'text' },
         { key: 'rpm_batch_max', label: this.$t('Maximum points per ReadMultiple (1-100; 1 = single read)'), type: 'number' },
-        { key: 'poll_ms', label: this.$t('Poll interval (ms)'), type: 'text' },
-        { key: 'discovery_ms', label: this.$t('Discovery interval (ms)'), type: 'text' },
-        { key: 'max_age_sec', label: this.$t('Maximum publish age (s)'), type: 'text' },
+        { key: 'poll_sec', label: this.$t('Poll interval (seconds)'), type: 'text' },
+        { key: 'discovery_min', label: this.$t('Discovery interval (minutes)'), type: 'text' },
+        { key: 'max_age_sec', label: this.$t('Max send time (s, 0 = no periodic sending)'), type: 'text' },
+        { key: 'min_send_sec', label: this.$t('Min send time (s, 0 = no rate limit)'), type: 'text' },
       ].filter((field) => {
         const cloud = this.config.mqtt_mode === 'gk_cloud';
         if (['controller_id', 'controller_license'].includes(field.key)) return cloud;
@@ -321,18 +325,33 @@ export default {
       try {
         const response = await this.$axios.get('/api/gk_bacnet_mqtt/config/config');
         const data = this.findPayload(response, ['mqtt_host', 'enabled']) || {};
-        this.config = Object.assign({}, this.config, data);
+        this.applyConfig(data);
       } catch (error) {
         // keep whatever is currently loaded
       }
     },
+    applyConfig(data) {
+      this.config = Object.assign({}, this.config, data);
+      if (data.poll_ms != null) this.config.poll_sec = String(Number(data.poll_ms) / 1000);
+      if (data.discovery_ms != null) this.config.discovery_min = String(Number(data.discovery_ms) / 60000);
+    },
     async saveConfig() {
       this.saveMessage = '';
       try {
-        const response = await this.$axios.post('/api/gk_bacnet_mqtt/config/config', { data: { ...this.config, rpm_batch_max: String(this.config.rpm_batch_max) } });
+        const { poll_sec, discovery_min, ...config } = this.config;
+        const toMilliseconds = (value, multiplier) => {
+          const n = Number(String(value).trim().replace(',', '.'));
+          if (String(value).trim() === '' || !Number.isFinite(n) || n <= 0) throw new Error('Invalid interval');
+          return String(Math.round(n * multiplier));
+        };
+        const response = await this.$axios.post('/api/gk_bacnet_mqtt/config/config', { data: {
+          ...config, rpm_batch_max: String(config.rpm_batch_max),
+          poll_ms: toMilliseconds(poll_sec, 1000),
+          discovery_ms: toMilliseconds(discovery_min, 60000),
+        } });
         const data = this.findPayload(response, ['mqtt_host', 'enabled']);
         if (!data) throw new Error('Invalid configuration response');
-        this.config = Object.assign({}, this.config, data);
+        this.applyConfig(data);
         this.saveError = false;
         this.config.controller_license = '';
         this.saveMessage = this.$t('Configuration has been applied');

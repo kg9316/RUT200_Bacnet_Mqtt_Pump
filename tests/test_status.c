@@ -14,6 +14,7 @@ char g_mqtt_host[128]="broker\"host", g_topic_root[128]="test\\root";
 int g_mqtt_port=8883;
 unsigned g_rpm_batch_max=30;
 unsigned g_poll_ms=5000,g_discovery_ms=10000,g_max_age_sec=300;
+unsigned g_min_send_sec=300;
 size_t device_count(void) { return 1; }
 bool mqtt_client_is_connected(void) { return true; }
 const char *gk_cloud_last_error(void) { return "DNS failure"; }

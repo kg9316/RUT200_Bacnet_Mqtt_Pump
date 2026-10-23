@@ -234,8 +234,13 @@ char *gk_cloud_message(const DEVICE_STATE *device, const POINT_STATE *point,
         json_object_object_add(payload, "value", json_object_new_int64((int64_t)point->numeric_value));
     else
         json_object_object_add(payload, "value", json_object_new_double(point->numeric_value));
-    /* Metadata stays on the gateway. A future REST service can associate it
-     * with this GUID separately; it must not leak through MQTT. */
+    /* Bootstrap the tag on the first accepted publication of each connection.
+     * Subsequent measurements keep the compact value-only payload. */
+    if (!point->config_published) {
+        json_object_object_add(payload, "name", json_object_new_string(point->name));
+        json_object_object_add(payload, "unit", json_object_new_string(point->unit));
+        json_object_object_add(payload, "description", json_object_new_string(point->description));
+    }
     result = strdup(json_object_to_json_string_ext(payload, JSON_C_TO_STRING_PLAIN));
     json_object_put(payload);
     return result;

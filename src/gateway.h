@@ -28,6 +28,7 @@
 #define DEFAULT_DISCOVERY_MS    10000
 #define DISCOVERY_EMPTY_MS       2000
 #define DEFAULT_MAX_AGE_SEC     300
+#define DEFAULT_MIN_SEND_SEC    300
 #define DEFAULT_RP_TIMEOUT_MS   3000
 
 #ifndef BACNET_ARRAY_ALL
@@ -61,6 +62,7 @@ typedef struct {
     char last_pub_string[NAME_LEN];
     bool have_published_value;
     time_t last_publish;
+    uint64_t last_publish_ms;
     uint64_t next_poll_ms;
     uint8_t metadata_step;
     uint32_t state_text_count;
@@ -141,6 +143,7 @@ extern unsigned g_poll_ms;
 extern unsigned g_rpm_batch_max;
 extern unsigned g_discovery_ms;
 extern unsigned g_max_age_sec;
+extern unsigned g_min_send_sec;
 extern unsigned g_rp_timeout_ms;
 extern char g_bacnet_interface[64];
 extern bool g_enabled;

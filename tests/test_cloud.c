@@ -179,7 +179,7 @@ static void test_messages(void)
     point.numeric_value = 42;
     point.bool_value = true;
     safe_copy(point.name, sizeof(point.name), "PRIVATE NAME");
-    safe_copy(point.description, sizeof(point.description), "PRIVATE DESCRIPTION");
+    safe_copy(point.description, sizeof(point.description), "PRIVATE DESCRIPTION: \"room\"\nsecond line");
     safe_copy(point.unit, sizeof(point.unit), "PRIVATE UNIT");
     safe_copy(point.string_value, sizeof(point.string_value), "quote\" newline\n slash\\");
     safe_copy(g_mqtt_settings.controller_id, sizeof(g_mqtt_settings.controller_id), "test-controller");
@@ -190,13 +190,19 @@ static void test_messages(void)
         struct json_object *root, *value;
         point.value_kind = kinds[i];
         char *payload = gk_cloud_message(device, &point, topic, sizeof(topic));
-        assert(payload && !strstr(payload, "PRIVATE"));
+        assert(payload);
         assert(strncmp(topic, "c/test-controller/t/", 20) == 0);
         assert(valid_uuid(topic + 20));
         if (i == 0) safe_copy(original_topic, sizeof(original_topic), topic);
         else assert(strcmp(original_topic, topic) == 0);
         root = json_tokener_parse(payload);
-        assert(root && json_object_object_length(root) == 3);
+        assert(root && json_object_object_length(root) == 6);
+        assert(json_object_object_get_ex(root,"name",&value));
+        assert(!strcmp(json_object_get_string(value),point.name));
+        assert(json_object_object_get_ex(root,"unit",&value));
+        assert(!strcmp(json_object_get_string(value),point.unit));
+        assert(json_object_object_get_ex(root,"description",&value));
+        assert(!strcmp(json_object_get_string(value),point.description));
         assert(json_object_object_get_ex(root, "timestamp", &value));
         assert(json_object_get_int64(value) == 1788180633795LL);
         assert(json_object_object_get_ex(root, "dataType", &value));
@@ -207,6 +213,13 @@ static void test_messages(void)
         if (i == 2) assert(json_object_is_type(value, json_type_boolean));
         json_object_put(root);
         free(payload);
+        point.config_published=true;
+        payload=gk_cloud_message(device,&point,topic,sizeof(topic));
+        root=json_tokener_parse(payload);
+        assert(root && json_object_object_length(root)==3);
+        assert(!strstr(payload,"PRIVATE"));
+        json_object_put(root);free(payload);
+        point.config_published=false;
     }
     point.value_kind = VALUE_NUMBER;
     point.numeric_value = NAN;
@@ -285,6 +298,6 @@ int main(void)
     test_imports();
     tag_registry_cleanup();
     remove(TAG_REGISTRY_PATH);
-    puts("PASS: persistent unique GUIDs, corruption handling, all four payload types, no metadata, token renewal/expiry");
+    puts("PASS: persistent unique GUIDs, corruption handling, first-publication metadata, compact subsequent values, token renewal/expiry");
     return 0;
 }

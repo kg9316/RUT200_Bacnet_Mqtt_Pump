@@ -41,6 +41,8 @@ int main(void){
  for(unsigned j=0;j<g_request.batch_count;j++)assert(g_request.batch[j]!=0);
  request_clear();
  device_table_cleanup();
+ /* Start the timeout scenario with independent mock counters. */
+ freed=0;published=0;failed=false;active=false;device_cursor=0;
 
  DEVICE_STATE*a=device(100,3),*b=device(200,3);
  scheduler_run();assert(g_request.device==a);failed=true;scheduler_run();assert(!g_request.active&&freed==1);assert(a->points[0].retry_after_ms>clock_ms);

@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 57: first-message metadata, min/max send times and readable interval units.
+# Release 57: RutOS 00.07.24.6, first-message metadata and min/max send times.
 
 on:
   workflow_dispatch:

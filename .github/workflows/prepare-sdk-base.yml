@@ -14,9 +14,9 @@ jobs:
     timeout-minutes: 120
 
     env:
-      SDK_URL: https://firmware.teltonika-networks.com/7.24.3/RUT2M/RUT2M_R_GPL_00.07.24.3.tar.gz
-      SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.3.tar.gz
-      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.3-v2
+      SDK_URL: https://firmware.teltonika-networks.com/7.24.6/RUT2M/RUT2M_R_GPL_00.07.24.6.tar.gz
+      SDK_ARCHIVE: RUT2M_R_GPL_00.07.24.6.tar.gz
+      BASE_CACHE_KEY: gk-sdk-base-RUT2M-00.07.24.6-v2
 
     steps:
       - uses: actions/checkout@v4

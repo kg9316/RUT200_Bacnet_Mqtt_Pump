@@ -11,5 +11,6 @@ int bacnet_client_init(const char *interface_name);
 int bacnet_client_reinit(const char *interface_name);
 void bacnet_client_loop(void);
 void bacnet_client_cleanup(void);
+void bacnet_client_cancel_device(uint32_t id);
 
 #endif

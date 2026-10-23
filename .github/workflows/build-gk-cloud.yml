@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 58: manual BACnet/IP endpoints and persistent point polling selection; isolated scheduler regression scenarios.
+# Release 59: device deletion and native Teltonika selection checkboxes.
 
 on:
   workflow_dispatch:

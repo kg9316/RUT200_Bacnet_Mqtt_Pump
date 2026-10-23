@@ -154,6 +154,11 @@ static void request_clear(void)
     memset(&g_request, 0, sizeof(g_request));
 }
 
+void bacnet_client_cancel_device(uint32_t id)
+{
+    if(g_request.device && g_request.device->device_id==id)request_clear();
+}
+
 static bool request_matches(BACNET_ADDRESS *src, uint8_t id)
 {
     BACNET_ADDRESS dest; unsigned max_apdu;

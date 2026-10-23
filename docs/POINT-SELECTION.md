@@ -42,3 +42,15 @@ channel. The UI waits for the matching request ID and reports persistence errors
 Point listing scans daemon memory and returns only the requested page; it does
 not load the entire registry in the API worker or browser. Full export still
 returns the complete registry, with the existing 2 MB import limit unchanged.
+
+Device removal
+--------------
+The device table uses Teltonika checkboxes to select devices. Delete removes
+all local points, GUID mappings, the device name, automatic-enable policy and
+any manual endpoint associated with that Device ID. The confirmation lists the
+selected IDs. Cloud history is not deleted. An active BACnet transaction is
+cancelled before freeing memory; queued MQTT messages are discarded by reconnecting.
+Other devices retain their GUIDs. A device that responds to later discovery
+will return with newly generated GUIDs. Export before deletion if restoration
+with the original GUIDs may be needed. Multi-device deletion is sequential;
+on failure, already deleted devices stay deleted and remaining selections stay.

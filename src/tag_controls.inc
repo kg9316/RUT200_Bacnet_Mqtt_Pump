@@ -181,6 +181,53 @@ static const char *control_request(struct json_object *req,struct json_object *r
     id=(unsigned)json_object_get_int(field(req,"device"));
     DEVICE_STATE *d=find_device(id);
     if(!d)return "Device not found";
+    if(!strcmp(action,"device_remove")) {
+        char prefix[24],device_key[16];
+        snprintf(prefix,sizeof(prefix),"%u:",id);snprintf(device_key,sizeof(device_key),"%u",id);
+        struct json_object *candidate=json_object_new_object(),*seen=json_object_new_object();
+        json_object_object_foreach(registry,key,value) {
+            if(!strncmp(key,prefix,strlen(prefix)))continue;
+            if(!strcmp(key,"_dn")) {
+                struct json_object *names=json_object_new_object();
+                json_object_object_foreach(value,k,v)if(strcmp(k,device_key))json_object_object_add(names,k,json_object_get(v));
+                json_object_object_add(candidate,key,names);
+            } else if(!strcmp(key,"_cfg")) {
+                struct json_object *cfg=json_object_new_object();
+                json_object_object_foreach(value,k,v) {
+                    if(!strcmp(k,"m")) {
+                        struct json_object *m=json_object_new_array();
+                        for(size_t i=0;i<json_object_array_length(v);i++) {
+                            struct json_object *row=json_object_array_get_idx(v,i),*di=field(row,"id");
+                            if(!di || (unsigned)json_object_get_int(di)!=id)json_object_array_add(m,json_object_get(row));
+                        }
+                        json_object_object_add(cfg,k,m);
+                    } else if(!strcmp(k,"n")) {
+                        struct json_object *defaults=json_object_new_object();
+                        json_object_object_foreach(v,dk,dv)if(strcmp(dk,device_key))json_object_object_add(defaults,dk,json_object_get(dv));
+                        json_object_object_add(cfg,k,defaults);
+                    } else json_object_object_add(cfg,k,json_object_get(v));
+                }
+                json_object_object_add(candidate,key,cfg);
+            } else {
+                json_object_object_add(candidate,key,json_object_get(value));
+                const char *tag=entry_tag(value);
+                if(tag)json_object_object_add(seen,tag,json_object_new_boolean(true));
+            }
+        }
+        struct json_object *previous=registry;registry=candidate;
+        if(!persist()) {
+            tag_registry_cleanup();json_object_put(previous);json_object_put(seen);
+            return "Unable to save deletion durably; gateway requires registry recovery";
+        }
+        json_object_put(previous);
+        if(identity_index)json_object_put(identity_index);identity_index=seen;
+        bacnet_client_cancel_device(id);
+        device_table_remove(id);
+        /* Drop publications already queued for the deleted GUIDs. */
+        mqtt_client_reconnect();
+        LOG_INFOF("BACnet device deleted: device=%u",id);
+        return NULL;
+    }
     if(!strcmp(action,"new_points")) {
         struct json_object *enabled=field(req,"enabled");
         if(!json_object_is_type(enabled,json_type_boolean))return "Invalid enabled value";

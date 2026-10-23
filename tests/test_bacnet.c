@@ -102,6 +102,13 @@ int main(void){
  scheduler_run();assert(g_request.device==c);request_clear(); /* silent offline devices are skipped */
  a->last_iam_ms=clock_ms;device_cursor=0;
  scheduler_run();assert(g_request.device==a);request_clear(); /* fresh presence permits a budgeted probe */
+ request_clear();device_table_cleanup();
+ a=device(900,2);b=device(901,2);assert(schedule_values(a,clock_ms));
+ unsigned before=freed;bacnet_client_cancel_device(901);assert(g_request.active && freed==before);
+ bacnet_client_cancel_device(900);assert(!g_request.active && !g_request.device && freed==before+1);
+ device_table_remove(900);assert(!find_device(900));
+ assert(add_point(b,OBJECT_ANALOG_INPUT,0)==&b->points[0] && b->point_count==2);
+ assert(schedule_values(b,clock_ms));request_clear();
  device_table_cleanup();puts("PASS: live RPM limits, APDU bounds, state metadata scheduling, optional-property errors and polling during metadata reads");
 }
 

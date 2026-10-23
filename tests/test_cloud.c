@@ -10,6 +10,7 @@
 MQTT_SETTINGS g_mqtt_settings;
 static unsigned reconnects;
 void mqtt_client_reconnect(void) { ++reconnects; }
+void bacnet_client_cancel_device(uint32_t id) { (void)id; }
 static uint64_t test_clock = 100000;
 uint64_t monotonic_ms(void) { return test_clock; }
 uint64_t unix_time_ms(void) { return 1788180633795ULL; }
@@ -332,7 +333,22 @@ static void test_controls(void)
     assert(!import_document(doc,&added,&updated));json_object_put(doc);
     assert(find_device(123)->points[0].poll_disabled && !tag_registry_new_points_enabled(123));
     result=run_control("{\"action\":\"point_set\",\"device\":123,\"all\":true,\"enabled\":true,\"state\":\"oops\"}",false);json_object_put(result);
+    DEVICE_STATE *other=get_or_create_device(1234);POINT_STATE *op=add_point(other,OBJECT_ANALOG_INPUT,0);
+    tag_registry_init_point(other,op);char other_guid[37];safe_copy(other_guid,sizeof(other_guid),tag_registry_lookup(1234,0,0));
+    result=run_control("{\"action\":\"device_remove\",\"device\":123}",true);json_object_put(result);
+    assert(!find_device(123) && !tag_registry_lookup(123,0,0));
+    assert(tag_registry_new_points_enabled(123) && !tag_registry_manual_target(0,&a,&id));
+    assert(add_point(other,OBJECT_ANALOG_INPUT,0)==op && other->point_count==1);
+    assert(!strcmp(other_guid,tag_registry_lookup(1234,0,0)));
+    tag_registry_cleanup();device_table_cleanup();assert(tag_registry_init()==0);tag_registry_restore_devices();
+    assert(!find_device(123) && find_device(1234));
+    assert(!strcmp(other_guid,tag_registry_lookup(1234,0,0)));
+    result=run_control("{\"action\":\"device_remove\",\"device\":1234}",true);json_object_put(result);
+    assert(device_count()==0 && total_points==0);
+    other=get_or_create_device(1234);op=add_point(other,OBJECT_ANALOG_INPUT,0);assert(op && other->point_count==1);
+    tag_registry_init_point(other,op);assert(strcmp(other_guid,tag_registry_lookup(1234,0,0)));
     device_table_cleanup();tag_registry_cleanup();
+    puts("PASS: deletion persists, preserves other GUIDs, reclaims point capacity and permits rediscovery");
     puts("PASS: manual endpoints, duplicate rejection, paging, filtered bulk edits, disabled defaults, stable GUIDs and persisted/imported selections");
 }
 

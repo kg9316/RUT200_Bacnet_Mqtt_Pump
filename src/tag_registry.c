@@ -1,5 +1,7 @@
 #include "tag_registry.h"
 #include "device_table.h"
+#include "bacnet_client.h"
+#include "mqtt_client.h"
 #include "logger.h"
 #include <json-c/json.h>
 #include <errno.h>

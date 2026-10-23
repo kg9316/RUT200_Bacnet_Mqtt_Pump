@@ -93,7 +93,7 @@ local function do_put(self)
         return self:ResponseOK({cleared=true})
     end
     if type(body)=="table" and body.action then
-        local allowed={manual_list=true,manual_save=true,manual_remove=true,point_list=true,point_set=true,new_points=true}
+        local allowed={device_remove=true,manual_list=true,manual_save=true,manual_remove=true,point_list=true,point_set=true,new_points=true}
         if not allowed[body.action] then return self:ResponseError("Unknown action") end
         return import_points(self)
     end

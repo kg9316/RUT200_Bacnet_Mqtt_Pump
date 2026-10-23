@@ -10,4 +10,5 @@ bool object_type_has_present_value(BACNET_OBJECT_TYPE type);
 POINT_STATE *add_point(DEVICE_STATE *device, BACNET_OBJECT_TYPE type, uint32_t instance);
 
 void device_table_cleanup(void);
+void device_table_remove(uint32_t id);
 #endif

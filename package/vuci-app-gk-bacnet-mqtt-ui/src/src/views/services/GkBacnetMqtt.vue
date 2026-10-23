@@ -32,12 +32,19 @@
 
 
 
+    <tlt-button :disabled="!deviceSelected.length || controlBusy || importBusy || deletingDevices" @click="removeDevices(deviceSelected.slice())">{{ $t('Delete selected devices') }} ({{ deviceSelected.length }})</tlt-button>
     <tlt-table id="gk-bacnet-devices" :title="$t('BACnet devices')"
 
                :data-source="deviceRows" :columns="deviceColumns" id-key="id"
 
                :pagination="true" :initial-per-page="25" @refresh="loadRuntime">
 
+      <template #selected="{ record }">
+        <tlt-check-box :custom-id="'device-select-' + record.id" :readonly="false" :disabled="controlBusy || importBusy || deletingDevices" v-model="deviceSelected" :box-value="record.id" />
+      </template>
+      <template #actions="{ record }">
+        <tlt-button :disabled="controlBusy || importBusy || deletingDevices" @click="removeDevices([record.id])">{{ $t('Delete') }}</tlt-button>
+      </template>
       <template #points="{ record }">
 
         <tlt-button :disabled="controlBusy || importBusy" @click="openPoints(record.id)">{{ record.enabledPoints == null ? record.points : record.enabledPoints }} / {{ record.points }} — {{ $t('Points') }}</tlt-button>
@@ -112,7 +119,7 @@
 
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
 
-        <tlt-switch :model-value="pointAll" :disabled="controlBusy" @update:model-value="pointAll=$event; pointSelected=[]" />
+        <tlt-check-box custom-id="points-select-all" :readonly="false" :model-value="pointAll" :disabled="controlBusy" @update:model-value="pointAll=$event; pointSelected=[]" />
 
         <span>{{ $t('Select all matching points, including other pages') }} ({{ pointTotal }})</span>
 
@@ -128,7 +135,7 @@
 
       <tlt-table id="gk-point-selection" :data-source="pointRows" :columns="pointColumns" id-key="key" :pagination="false">
 
-        <template #selected="{record}"><tlt-switch :disabled="controlBusy || pointAll" :model-value="pointAll || pointSelected.includes(record.key)" @update:model-value="selectPoint(record.key,$event)" /></template>
+        <template #selected="{record}"><tlt-check-box :custom-id="'point-select-' + record.key" :readonly="false" :disabled="controlBusy || pointAll" :model-value="pointAll || pointSelected.includes(record.key)" @update:model-value="selectPoint(record.key,$event)" /></template>
 
         <template #enabled="{record}"><tlt-badge :type="record.enabled ? 'primary' : 'inactive'">{{ record.enabled ? $t('Enabled') : $t('Disabled') }}</tlt-badge></template>
 
@@ -286,6 +293,7 @@ export default {
 
       controlBusy: false, controlMessage: '',
 
+      deviceSelected: [], deletingDevices: false,
       manualIp: '', manualPort: '47808', manualName: '', manualId: '', manualTargets: [],
 
       pointDevice: null, pointRows: [], pointTotal: 0, pointPage: 0,
@@ -408,6 +416,8 @@ export default {
 
       return [
 
+        { dataIndex: 'selected', title: this.$t('Select') },
+        { dataIndex: 'actions', title: this.$t('Actions') },
         { dataIndex: 'id', title: this.$t('Device ID') },
 
         { dataIndex: 'name', title: this.$t('Name') },
@@ -598,6 +608,21 @@ export default {
 
     },
 
+    async removeDevices(ids) {
+      if (!ids.length || this.deletingDevices) return;
+      if (!window.confirm(this.$t('Delete these devices and all their local points and GUID mappings? Cloud history is not deleted. Devices that respond to discovery again will return with new GUIDs.') + '\n' + ids.join(', '))) return;
+      this.deletingDevices=true;
+      let removed=0;
+      try {
+        for (const device of ids) {
+          await this.control('device_remove',{device});removed++;
+          this.deviceSelected=this.deviceSelected.filter(id=>id!==device);
+          if(this.pointDevice===device){this.pointDevice=null;this.pointRows=[];this.pointSelected=[];this.pointTotal=0;this.pointAll=false;}
+        }
+        this.controlMessage=`${removed} ${this.$t('devices deleted')}`;
+      } catch(e) {this.controlMessage=`${removed} ${this.$t('devices deleted')}. ${e.message}`;}
+      finally {this.deletingDevices=false;await this.loadRuntime();await this.loadManual();}
+    },
     async loadManual() {
 
       try {this.manualTargets=(await this.control('manual_list')).manual || [];}

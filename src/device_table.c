@@ -148,6 +148,29 @@ POINT_STATE *add_point(DEVICE_STATE *device, BACNET_OBJECT_TYPE type, uint32_t i
     return point;
 }
 
+/* Caller cancels the device's outstanding BACnet request before freeing it. */
+void device_table_remove(uint32_t id)
+{
+    DEVICE_STATE *d=find_device(id);
+    if(!d)return;
+    total_points-=d->point_count;
+    free(d->points);memset(d,0,sizeof(*d));total_limit_warned=false;
+    /* Rebuild open addressing: clearing individual slots would break chains. */
+    if(!point_index)return;
+    memset(point_index,0,POINT_INDEX_SIZE*sizeof(*point_index));
+    for(size_t i=0;i<MAX_DEVICES;i++) {
+        d=&g_devices[i];
+        for(size_t j=0;d->used && j<d->point_count;j++) {
+            POINT_STATE *p=&d->points[j];
+            uint64_t key=((uint64_t)d->device_id<<32)|((uint64_t)(unsigned)p->object_type<<22)|p->object_instance;
+            uint64_t hash=key;hash^=hash>>33;hash*=UINT64_C(0xff51afd7ed558ccd);hash^=hash>>33;
+            size_t slot=(size_t)hash&(POINT_INDEX_SIZE-1);
+            while(point_index[slot].index_plus_one)slot=(slot+1)&(POINT_INDEX_SIZE-1);
+            point_index[slot].key=key;point_index[slot].index_plus_one=(uint16_t)(j+1);
+        }
+    }
+}
+
 void device_table_cleanup(void)
 {
     memset(&g_request, 0, sizeof(g_request));

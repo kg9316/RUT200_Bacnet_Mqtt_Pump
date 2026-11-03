@@ -314,6 +314,18 @@ static void test_controls(void)
         POINT_STATE *p=add_point(d,OBJECT_ANALOG_INPUT,i);assert(p);
         snprintf(p->name,sizeof(p->name),"Supply %u",i);tag_registry_init_point(d,p);assert(p->poll_disabled);
     }
+    d->points[0].have_value=true;d->points[0].value_kind=VALUE_NUMBER;d->points[0].numeric_value=0;
+    d->points[1].have_value=true;d->points[1].value_kind=VALUE_BOOL;d->points[1].bool_value=false;
+    d->points[2].have_value=true;d->points[2].value_kind=VALUE_STRING;safe_copy(d->points[2].string_value,NAME_LEN,"Active");
+    result=run_control("{\"action\":\"point_list\",\"device\":123}",true);
+    struct json_object *values=field(result,"rows");
+    assert(json_object_is_type(field(json_object_array_get_idx(values,0),"value"),json_type_double));
+    assert(json_object_get_double(field(json_object_array_get_idx(values,0),"value"))==0);
+    assert(json_object_is_type(field(json_object_array_get_idx(values,1),"value"),json_type_boolean));
+    assert(!json_object_get_boolean(field(json_object_array_get_idx(values,1),"value")));
+    assert(!strcmp(json_object_get_string(field(json_object_array_get_idx(values,2),"value")),"Active"));
+    assert(!field(json_object_array_get_idx(values,3),"value"));json_object_put(result);
+    assert(!field(field(registry,"123:0:0"),"value"));
     char guid[37];safe_copy(guid,sizeof(guid),tag_registry_lookup(123,0,0));
     result=run_control("{\"action\":\"point_list\",\"device\":123,\"q\":\"SUPPLY\",\"page\":1}",true);
     assert(json_object_get_int(field(result,"total"))==205 && json_object_array_length(field(result,"rows"))==100);json_object_put(result);

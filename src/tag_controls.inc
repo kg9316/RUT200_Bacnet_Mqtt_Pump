@@ -1,5 +1,6 @@
 /* Registry-owned controls. All operations execute on the daemon thread. */
 #include <ctype.h>
+#include <math.h>
 
 static struct json_object *field(struct json_object *o,const char *key)
 {
@@ -276,6 +277,18 @@ static const char *control_request(struct json_object *req,struct json_object *r
             json_object_object_add(r,"description",json_object_new_string(p->description));
             json_object_object_add(r,"unit",json_object_new_string(p->unit));
             json_object_object_add(r,"enabled",json_object_new_boolean(!p->poll_disabled));
+            struct json_object *value=NULL;
+            if(p->have_value) {
+                switch(p->value_kind) {
+                    case VALUE_NUMBER: case VALUE_ENUM:
+                        if(isfinite(p->numeric_value))value=json_object_new_double(p->numeric_value);
+                        break;
+                    case VALUE_BOOL:value=json_object_new_boolean(p->bool_value);break;
+                    case VALUE_STRING:value=json_object_new_string(p->string_value);break;
+                    default:break;
+                }
+            }
+            json_object_object_add(r,"value",value);
             json_object_array_add(rows,r);
         }
         ++total;

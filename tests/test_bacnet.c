@@ -57,7 +57,7 @@ int main(void){
  a->points[0].next_poll_ms=a->points[1].next_poll_ms=0;a->point_cursor=0;assert(schedule_values(a,clock_ms));assert(g_request.batch_count==2);
  uint8_t ack[]={0x0c,0,0,0,0,0x1e,0x29,85,0x4e,0x44,0x41,0xac,0,0,0x4f,0x1f,0x0c,0,0,0,1,0x1e,0x29,85,0x5e,0x91,2,0x91,32,0x5f,0x1f};
  BACNET_ADDRESS src={0};BACNET_CONFIRMED_SERVICE_ACK_DATA svc={0};svc.invoke_id=8;
- gateway_rpm_ack(ack,sizeof(ack),&src,&svc);assert(!g_request.active&&published==1&&a->state==1);assert(a->points[1].retry_after_ms>clock_ms);
+ gateway_rpm_ack(ack,sizeof(ack),&src,&svc);assert(!g_request.active&&published==1&&a->state==1);assert(a->rpm_proven_count==2);assert(a->points[1].retry_after_ms>clock_ms);
  for(unsigned n=1;n<sizeof(ack);n++){a->points[0].next_poll_ms=a->points[1].next_poll_ms=0;a->points[0].retry_after_ms=a->points[1].retry_after_ms=0;a->point_cursor=0;a->rpm_limit=30;assert(schedule_values(a,clock_ms));gateway_rpm_ack(ack,n,&src,&svc);assert(!g_request.active);}
  assert(object_type_has_present_value(OBJECT_SCHEDULE));assert(object_type_has_present_value(OBJECT_CALENDAR));assert(object_type_has_present_value(OBJECT_CHARACTERSTRING_VALUE));assert(!object_type_has_present_value(OBJECT_DEVICE));
  device_table_cleanup();a=device(300,30);a->rpm_limit=30;assert(schedule_values(a,clock_ms));
@@ -109,6 +109,11 @@ int main(void){
  device_table_remove(900);assert(!find_device(900));
  assert(add_point(b,OBJECT_ANALOG_INPUT,0)==&b->points[0] && b->point_count==2);
  assert(schedule_values(b,clock_ms));request_clear();
+ device_table_cleanup();bacnet_client_set_rpm_max(30);a=device(950,30);a->max_apdu=1460;a->rpm_limit=30;a->rpm_proven_count=30;
+ assert(schedule_values(a,clock_ms));assert(g_request.batch_count==30);request_failed(true);assert(a->rpm_limit==30);
+ clock_ms+=60000;assert(schedule_values(a,clock_ms));request_failed(false);assert(a->rpm_limit==15 && a->rpm_proven_count==15);
+ device_table_cleanup();a=device(951,30);a->max_apdu=1460;a->rpm_limit=30;
+ assert(schedule_values(a,clock_ms));request_failed(true);assert(a->rpm_limit==15);
  device_table_cleanup();puts("PASS: live RPM limits, APDU bounds, state metadata scheduling, optional-property errors and polling during metadata reads");
 }
 

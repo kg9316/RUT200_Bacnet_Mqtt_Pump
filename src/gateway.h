@@ -24,10 +24,10 @@
 #define DEFAULT_BACNET_IF       "br-lan"
 #define DEFAULT_MQTT_HOST       "127.0.0.1"
 #define DEFAULT_MQTT_PORT       1883
-#define DEFAULT_POLL_MS         5000
-#define DEFAULT_DISCOVERY_MS    10000
+#define DEFAULT_POLL_MS         60000
+#define DEFAULT_DISCOVERY_MS    600000
 #define DISCOVERY_EMPTY_MS       2000
-#define DEFAULT_MAX_AGE_SEC     300
+#define DEFAULT_MAX_AGE_SEC     0
 #define DEFAULT_MIN_SEND_SEC    300
 #define DEFAULT_RP_TIMEOUT_MS   3000
 
@@ -101,6 +101,7 @@ typedef struct {
     uint8_t backoff;
     bool rpm_unsupported;
     bool rpm_confirmed;
+    uint8_t rpm_proven_count; /* Largest complete RPM reply seen during this run. */
     uint8_t rpm_limit; /* 0 = not yet sized, 1 = single reads */
     uint8_t last_poll_count; /* Last transmitted value request: 0 none, 1 RP, >1 RPM. */
     uint8_t phase;

@@ -18,7 +18,12 @@ MQTT_DIAGNOSTICS g_mqtt_diagnostics;
 static void mqtt_error(const char *stage, int rc)
 {
     ++g_mqtt_diagnostics.failures;
-    snprintf(g_mqtt_diagnostics.error, sizeof(g_mqtt_diagnostics.error), "%s: %s (rc=%d)", stage, mosquitto_strerror(rc), rc);
+    const char *reason=NULL;
+    if(rc==MOSQ_ERR_KEEPALIVE)reason="Broker did not respond to keepalive; connection lost. Check network, mobile data or broker availability";
+    else if(rc==MOSQ_ERR_CONN_LOST)reason="Connection to broker lost. Check network, mobile data or broker availability";
+    else if(rc==MOSQ_ERR_NO_CONN)reason="Not connected to broker";
+    else if(rc==MOSQ_ERR_EAI)reason="Cannot resolve broker hostname. Check DNS and network connection";
+    snprintf(g_mqtt_diagnostics.error, sizeof(g_mqtt_diagnostics.error), "%s: %s (rc=%d)", stage, reason ? reason : mosquitto_strerror(rc), rc);
     LOG_WARNF("MQTT %s", g_mqtt_diagnostics.error);
 }
 

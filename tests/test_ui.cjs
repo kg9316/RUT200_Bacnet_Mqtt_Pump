@@ -25,6 +25,8 @@ page.status.deviceDetails=[{id:1,pollMode:'multiple',lastPollMode:'single',lastP
 assert.equal(page.deviceRows[0].pollModeText,'ReadMultiple');
 assert.equal(page.deviceRows[0].lastPollText,'Single read (1)');
 page.config.rpm_batch_max=50;
+assert.equal(page.config.mqtt_mode,'gk_cloud');assert.equal(page.config.poll_sec,'60');assert.equal(page.config.discovery_min,'10');assert.equal(page.config.max_age_sec,'0');
+page.config.mqtt_mode='generic';
 assert(fields().includes('mqtt_host') && !fields().includes('controller_license'));
 page.config.mqtt_mode = 'gk_cloud';
 assert(!fields().includes('mqtt_host') && !fields().includes('mqtt_tls'));

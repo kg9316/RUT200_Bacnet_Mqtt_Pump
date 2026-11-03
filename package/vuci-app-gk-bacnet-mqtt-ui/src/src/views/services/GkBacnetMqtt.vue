@@ -137,6 +137,7 @@
 
         <template #selected="{record}"><tlt-check-box :custom-id="'point-select-' + record.key" :readonly="false" :disabled="controlBusy || pointAll" :model-value="pointAll || pointSelected.includes(record.key)" @update:model-value="selectPoint(record.key,$event)" /></template>
 
+        <template #value="{record}">{{ record.value == null ? '—' : String(record.value) }}</template>
         <template #enabled="{record}"><tlt-badge :type="record.enabled ? 'primary' : 'inactive'">{{ record.enabled ? $t('Enabled') : $t('Disabled') }}</tlt-badge></template>
 
       </tlt-table>
@@ -336,7 +337,7 @@ export default {
 
         mqtt_port: '',
 
-        mqtt_mode: 'generic',
+        mqtt_mode: 'gk_cloud',
 
         mqtt_tls: '0',
 
@@ -358,13 +359,13 @@ export default {
 
         poll_ms: '',
 
-        poll_sec: '',
+        poll_sec: '60',
 
         discovery_ms: '',
 
-        discovery_min: '',
+        discovery_min: '10',
 
-        max_age_sec: '',
+        max_age_sec: '0',
 
         min_send_sec: '300',
 
@@ -388,7 +389,7 @@ export default {
 
     pointColumns() {
 
-      return [{dataIndex:'selected',title:this.$t('Select')},{dataIndex:'key',title:this.$t('Object ID')},{dataIndex:'name',title:this.$t('Name')},{dataIndex:'unit',title:this.$t('Unit')},{dataIndex:'description',title:this.$t('Description')},{dataIndex:'enabled',title:this.$t('Polling')}];
+      return [{dataIndex:'selected',title:this.$t('Select')},{dataIndex:'key',title:this.$t('Object ID')},{dataIndex:'name',title:this.$t('Name')},{dataIndex:'value',title:this.$t('Last known value')},{dataIndex:'unit',title:this.$t('Unit')},{dataIndex:'description',title:this.$t('Description')},{dataIndex:'enabled',title:this.$t('Polling')}];
 
     },
 
@@ -532,7 +533,7 @@ export default {
 
         if (['mqtt_cert_file', 'mqtt_key_file'].includes(field.key)) return !cloud && this.config.mqtt_tls === '1';
 
-        if (field.key === 'mqtt_ca_file') return cloud || this.config.mqtt_tls === '1';
+        if (field.key === 'mqtt_ca_file') return false;
 
         return true;
 

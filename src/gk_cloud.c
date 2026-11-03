@@ -23,6 +23,17 @@ static uint64_t expires_ms, refresh_ms, retry_ms, request_started_ms;
 static unsigned generation;
 static char last_error[192];
 const char *gk_cloud_last_error(void) { return last_error; }
+static void token_error(long status,CURLcode code)
+{
+    const char *reason=NULL;
+    if(code==CURLE_OPERATION_TIMEDOUT)reason="Token server request timed out. Check network, mobile data or server availability";
+    else if(code==CURLE_COULDNT_RESOLVE_HOST)reason="Cannot resolve token server hostname. Check DNS and network connection";
+    else if(code==CURLE_COULDNT_CONNECT)reason="Cannot connect to token server. Check network, mobile data or server availability";
+    if(reason)snprintf(last_error,sizeof(last_error),"GK: %s (transport %d); retrying in 30 s",reason,code);
+    else if(code!=CURLE_OK)snprintf(last_error,sizeof(last_error),"GK token connection failed: %s (transport %d); retrying in 30 s",curl_easy_strerror(code),code);
+    else snprintf(last_error,sizeof(last_error),"GK token failed: HTTP %ld, invalid or rejected response; retrying in 30 s",status);
+}
+
 
 static void finish_request(void)
 {
@@ -191,8 +202,7 @@ void gk_cloud_loop(void)
                 last_error[0] = 0;
                 LOG_INFOF("GK access token renewed");
             } else {
-                snprintf(last_error, sizeof(last_error), "GK token failed: HTTP %ld, %s (transport %d)",
-                    status, message->data.result == CURLE_OK ? "invalid or rejected response" : curl_easy_strerror(message->data.result), message->data.result);
+                token_error(status,message->data.result);
                 LOG_WARNF("%s", last_error);
             }
             finish_request();

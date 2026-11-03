@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 59: device deletion and native Teltonika selection checkboxes.
+# Release 60: RutOS 7.24.7, defaults, point values, units and resilient RPM limits.
 
 on:
   workflow_dispatch:

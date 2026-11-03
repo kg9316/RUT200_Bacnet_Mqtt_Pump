@@ -134,14 +134,29 @@ static bool application_value_to_point_value(BACNET_APPLICATION_DATA_VALUE *valu
 static void unit_to_text(uint32_t unit, char *dst, size_t n)
 {
     switch (unit) {
-        case 62: safe_copy(dst, n, "°C"); break;
-        case 64: safe_copy(dst, n, "°F"); break;
-        case 98: safe_copy(dst, n, "%"); break;
-        case 95: safe_copy(dst, n, "Pa"); break;
-        case 3:  safe_copy(dst, n, "A"); break;
-        case 5:  safe_copy(dst, n, "V"); break;
+        case 3: safe_copy(dst, n, "A"); break;
+        case 5: safe_copy(dst, n, "V"); break;
+        case 19: safe_copy(dst, n, "kWh"); break;
+        case 27: safe_copy(dst, n, "Hz"); break;
+        case 37: safe_copy(dst, n, "lx"); break;
         case 47: safe_copy(dst, n, "W"); break;
         case 48: safe_copy(dst, n, "kW"); break;
+        case 53: safe_copy(dst, n, "Pa"); break;
+        case 54: safe_copy(dst, n, "kPa"); break;
+        case 55: safe_copy(dst, n, "bar"); break;
+        case 62: safe_copy(dst, n, "\302\260C"); break;
+        case 63: safe_copy(dst, n, "K"); break;
+        case 64: safe_copy(dst, n, "\302\260F"); break;
+        case 70: safe_copy(dst, n, "d"); break;
+        case 71: safe_copy(dst, n, "h"); break;
+        case 72: safe_copy(dst, n, "min"); break;
+        case 73: safe_copy(dst, n, "s"); break;
+        case 80: safe_copy(dst, n, "m\xc2\xb3"); break;
+        case 95: safe_copy(dst, n, ""); break;
+        case 98: safe_copy(dst, n, "%"); break;
+        case 122: safe_copy(dst, n, "k\xce\xa9"); break;
+        case 135: safe_copy(dst, n, "m\xc2\xb3/h"); break;
+        case 146: safe_copy(dst, n, "MWh"); break;
         default:
             snprintf(dst, n, "unit:%lu", (unsigned long)unit);
             break;
@@ -221,8 +236,17 @@ static void request_failed(bool timeout)
     if (g_request.point) point_failed(g_request.point);
     for (unsigned i=0; i<g_request.batch_count; i++) point_failed(&d->points[g_request.batch[i]]);
     /* A failed group is split on its next turn; no immediate retry monopolizes the channel. */
-    if (g_request.kind == REQ_POINT_MULTIPLE && d->rpm_limit > 1)
-        d->rpm_limit = (g_request.batch_count + 1) / 2;
+    if (g_request.kind == REQ_POINT_MULTIPLE && d->rpm_limit > 1) {
+        unsigned reduced=(g_request.batch_count+1)/2;
+        /* Silence cannot invalidate a batch size previously answered in full. */
+        if(timeout && d->rpm_proven_count>=g_request.batch_count) {
+            /* Keep the current limit. Offline/backoff handling still applies. */
+        } else {
+            if(timeout && reduced<d->rpm_proven_count)reduced=d->rpm_proven_count;
+            d->rpm_limit=reduced;
+            if(!timeout && d->rpm_proven_count>reduced)d->rpm_proven_count=reduced;
+        }
+    }
     if (!g_request.point && g_request.kind != REQ_POINT_MULTIPLE)
         d->discovery_after_ms = monotonic_ms() + 10000;
     /* Optional metadata must not prevent polling. Preserve cached text on failures. */
@@ -505,6 +529,7 @@ static void gateway_reject_handler(BACNET_ADDRESS *src, uint8_t id, uint8_t reas
     if (g_request.kind == REQ_POINT_MULTIPLE && reason == REJECT_REASON_UNRECOGNIZED_SERVICE) {
         g_request.device->rpm_limit = 1;
         g_request.device->rpm_unsupported = true;
+        g_request.device->rpm_proven_count = 0;
     }
     request_failed(false);
 }
@@ -551,6 +576,9 @@ static void gateway_rpm_ack(uint8_t *buf, uint16_t n, BACNET_ADDRESS *src,
     }
     device_answered(d);
     if (n) d->rpm_confirmed=true;
+    bool complete=n>0;
+    for(unsigned i=0;i<g_request.batch_count;i++)if(!seen[i])complete=false;
+    if(complete && g_request.batch_count>d->rpm_proven_count)d->rpm_proven_count=g_request.batch_count;
     for(unsigned i=0;i<g_request.batch_count;i++) if(!seen[i]) point_failed(&d->points[g_request.batch[i]]);
     request_clear();return;
 malformed:

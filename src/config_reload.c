@@ -44,13 +44,13 @@ static void reload_from_disk(bool initial)
         strlen(OPT("mqtt_ca_file", "")) >= sizeof(next.ca_file) ||
         strlen(OPT("mqtt_cert_file", "")) >= sizeof(next.cert_file) ||
         strlen(OPT("mqtt_key_file", "")) >= sizeof(next.key_file) ||
-        (strcmp(OPT("mqtt_mode", "generic"), "generic") != 0 &&
-         strcmp(OPT("mqtt_mode", "generic"), "gk_cloud") != 0)) {
+        (strcmp(OPT("mqtt_mode", "gk_cloud"), "generic") != 0 &&
+         strcmp(OPT("mqtt_mode", "gk_cloud"), "gk_cloud") != 0)) {
         LOG_ERRORF("invalid MQTT configuration; retaining previous settings");
         goto done;
     }
     next.tls = strcmp(OPT("mqtt_tls", "0"), "1") == 0;
-    next.gk_cloud = strcmp(OPT("mqtt_mode", "generic"), "gk_cloud") == 0;
+    next.gk_cloud = strcmp(OPT("mqtt_mode", "gk_cloud"), "gk_cloud") == 0;
     safe_copy(next.ca_file, sizeof(next.ca_file), OPT("mqtt_ca_file", MQTT_CA_BUNDLE));
     safe_copy(next.cert_file, sizeof(next.cert_file), OPT("mqtt_cert_file", ""));
     safe_copy(next.key_file, sizeof(next.key_file), OPT("mqtt_key_file", ""));
@@ -75,9 +75,9 @@ static void reload_from_disk(bool initial)
     if (*rpm_text && !*rpm_end && rpm_max >= 1 && rpm_max <= RPM_BATCH_MAX)
         bacnet_client_set_rpm_max((unsigned)rpm_max);
     else LOG_ERRORF("invalid RPM maximum; retaining previous limit");
-    g_poll_ms = (unsigned)strtoul(OPT("poll_ms", "5000"), NULL, 10);
-    g_discovery_ms = (unsigned)strtoul(OPT("discovery_ms", "10000"), NULL, 10);
-    g_max_age_sec = (unsigned)strtoul(OPT("max_age_sec", "300"), NULL, 10);
+    g_poll_ms = (unsigned)strtoul(OPT("poll_ms", "60000"), NULL, 10);
+    g_discovery_ms = (unsigned)strtoul(OPT("discovery_ms", "600000"), NULL, 10);
+    g_max_age_sec = (unsigned)strtoul(OPT("max_age_sec", "0"), NULL, 10);
     g_min_send_sec = (unsigned)strtoul(OPT("min_send_sec", "300"), NULL, 10);
     g_enabled = strcmp(OPT("enabled", "1"), "1") == 0;
     safe_copy(interface, sizeof(interface), OPT("bacnet_interface", DEFAULT_BACNET_IF));

@@ -2,7 +2,7 @@
 
   <div style="display:flex;flex-direction:column;gap:16px;">
 
-    <tlt-card :title="$t('Runtime status')">
+    <tlt-card :initial-active="false" :active="false" :title="$t('Runtime status')">
 
       <div v-for="row in statusRows" :key="row.label"
 
@@ -32,8 +32,63 @@
 
 
 
+    <tlt-card :initial-active="false" :active="false" :title="$t('Gateway configuration')">
+
+      <div v-for="field in configFields" :key="field.key"
+
+           style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(127,127,127,.15);">
+
+        <label :for="'gk-cfg-' + field.key" style="opacity:.7;font-size:13px;">{{ field.label }}</label>
+
+        <tlt-select v-if="field.type === 'select'" :id="'gk-cfg-' + field.key"
+
+                    v-model="config[field.key]" :data-source="field.options.map(opt => ({ key: opt, value: opt }))"
+
+                    :readonly="false" style="width:200px;" />
+
+        <tlt-switch v-else-if="field.type === 'switch'" :id="'gk-cfg-' + field.key"
+
+                    :model-value="config[field.key] === '1'"
+
+                    @update:model-value="config[field.key] = $event ? '1' : '0'" />
+
+        <input v-else :id="'gk-cfg-' + field.key" :type="field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'" :min="field.type === 'number' ? 1 : undefined" :max="field.type === 'number' ? 100 : undefined" v-model="config[field.key]"
+
+               :autocomplete="field.type === 'password' ? 'new-password' : 'off'"
+
+               style="min-width:200px;padding:8px 10px;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:transparent;color:inherit;" />
+
+      </div>
+
+
+
+      <p v-if="config.mqtt_mode === 'gk_cloud'" style="font-size:13px;">
+
+        {{ $t('GK Cloud uses edge-broker.gkcloud.no:8883 with verified TLS and automatic token renewal. Tag GUIDs are saved on this router. The first publication includes name, description and unit; subsequent messages contain values.') }}
+
+        {{ config.controller_license_configured ? $t('A license is saved. Leave the license field empty to keep it.') : $t('Enter your controller ID and license.') }}
+
+      </p>
+
+      <p v-else-if="config.mqtt_tls === '1'" style="font-size:13px;">
+
+        {{ $t('Set the broker TLS port (usually 8883). An empty CA path uses the system CA bundle. Client certificate and key are optional paths to PEM files on the router.') }}
+
+      </p>
+
+      <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+
+        <tlt-button @click="saveConfig">{{ $t('Save & Apply') }}</tlt-button>
+
+        <span v-if="saveMessage" :style="{color: saveError ? '#c44747' : '#2e9b57', fontSize: '13px'}">{{ saveMessage }}</span>
+
+      </div>
+
+    </tlt-card>
+
+    <tlt-card :initial-active="false" :active="false" :title="$t('BACnet devices')">
     <tlt-button :disabled="!deviceSelected.length || controlBusy || importBusy || deletingDevices" @click="removeDevices(deviceSelected.slice())">{{ $t('Delete selected devices') }} ({{ deviceSelected.length }})</tlt-button>
-    <tlt-table id="gk-bacnet-devices" :title="$t('BACnet devices')"
+    <tlt-table id="gk-bacnet-devices"
 
                :data-source="deviceRows" :columns="deviceColumns" id-key="id"
 
@@ -62,10 +117,11 @@
       </template>
 
     </tlt-table>
+    </tlt-card>
 
 
 
-    <tlt-card :title="$t('Manual BACnet devices')">
+    <tlt-card :initial-active="false" :active="false" :title="$t('Manual BACnet devices')">
 
       <p>{{ $t('Add a direct BACnet/IP endpoint. Point discovery starts when the device responds. Offline endpoints are saved and retried.') }}</p>
 
@@ -101,7 +157,7 @@
 
 
 
-    <tlt-card v-if="pointDevice !== null" :title="$t('Point selection') + ' — ' + pointDevice">
+    <tlt-card :initial-active="false" :active="false" v-if="pointDevice !== null" :title="$t('Point selection') + ' — ' + pointDevice">
 
       <div class="gk-entry-row">
 
@@ -160,63 +216,11 @@
 
 
 
-    <tlt-card :title="$t('Gateway configuration')">
-
-      <div v-for="field in configFields" :key="field.key"
-
-           style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(127,127,127,.15);">
-
-        <label :for="'gk-cfg-' + field.key" style="opacity:.7;font-size:13px;">{{ field.label }}</label>
-
-        <tlt-select v-if="field.type === 'select'" :id="'gk-cfg-' + field.key"
-
-                    v-model="config[field.key]" :data-source="field.options.map(opt => ({ key: opt, value: opt }))"
-
-                    :readonly="false" style="width:200px;" />
-
-        <tlt-switch v-else-if="field.type === 'switch'" :id="'gk-cfg-' + field.key"
-
-                    :model-value="config[field.key] === '1'"
-
-                    @update:model-value="config[field.key] = $event ? '1' : '0'" />
-
-        <input v-else :id="'gk-cfg-' + field.key" :type="field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'" :min="field.type === 'number' ? 1 : undefined" :max="field.type === 'number' ? 100 : undefined" v-model="config[field.key]"
-
-               :autocomplete="field.type === 'password' ? 'new-password' : 'off'"
-
-               style="min-width:200px;padding:8px 10px;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:transparent;color:inherit;" />
-
-      </div>
 
 
 
-      <p v-if="config.mqtt_mode === 'gk_cloud'" style="font-size:13px;">
 
-        {{ $t('GK Cloud uses edge-broker.gkcloud.no:8883 with verified TLS and automatic token renewal. Tag GUIDs are saved on this router. The first publication includes name, description and unit; subsequent messages contain values.') }}
-
-        {{ config.controller_license_configured ? $t('A license is saved. Leave the license field empty to keep it.') : $t('Enter your controller ID and license.') }}
-
-      </p>
-
-      <p v-else-if="config.mqtt_tls === '1'" style="font-size:13px;">
-
-        {{ $t('Set the broker TLS port (usually 8883). An empty CA path uses the system CA bundle. Client certificate and key are optional paths to PEM files on the router.') }}
-
-      </p>
-
-      <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
-
-        <tlt-button @click="saveConfig">{{ $t('Save & Apply') }}</tlt-button>
-
-        <span v-if="saveMessage" :style="{color: saveError ? '#c44747' : '#2e9b57', fontSize: '13px'}">{{ saveMessage }}</span>
-
-      </div>
-
-    </tlt-card>
-
-
-
-    <tlt-card :title="$t('Point export')">
+    <tlt-card :initial-active="false" :active="false" :title="$t('Point export')">
 
       <p>{{ $t('Download controller ID and the local GUID mapping with names, units and descriptions.') }}</p>
 
@@ -240,7 +244,7 @@
 
 
 
-    <tlt-card :title="$t('Gateway log')">
+    <tlt-card :initial-active="false" :active="false" :title="$t('Gateway log')">
 
       <tlt-select id="gk-log-filter" v-model="logMode" :readonly="false" style="width:260px;"
 

@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 67: Larger search and manual device inputs with clear label spacing.
+# Release 68: Reorder configuration, collapse sections and group device deletion.
 
 on:
   workflow_dispatch:

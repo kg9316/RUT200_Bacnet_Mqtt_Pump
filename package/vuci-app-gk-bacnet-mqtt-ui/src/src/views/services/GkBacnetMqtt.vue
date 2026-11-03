@@ -69,15 +69,15 @@
 
       <p>{{ $t('Add a direct BACnet/IP endpoint. Point discovery starts when the device responds. Offline endpoints are saved and retried.') }}</p>
 
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <div class="gk-entry-row">
 
-        <label>{{ $t('IPv4 address') }} <input v-model="manualIp" placeholder="192.168.1.20" /></label>
+        <label class="gk-entry" for="gk-manualIp"><span>{{ $t('IPv4 address') }}</span><input id="gk-manualIp" v-model="manualIp" placeholder="192.168.1.20"  /></label>
 
-        <label>{{ $t('Port') }} <input v-model="manualPort" type="number" min="1" max="65535" /></label>
+        <label class="gk-entry" for="gk-manualPort"><span>{{ $t('Port') }}</span><input id="gk-manualPort" v-model="manualPort" type="number" min="1" max="65535"  /></label>
 
-        <label>{{ $t('Name (optional)') }} <input v-model="manualName" maxlength="95" /></label>
+        <label class="gk-entry" for="gk-manualName"><span>{{ $t('Name (optional)') }}</span><input id="gk-manualName" v-model="manualName" maxlength="95" :placeholder="$t('e.g. Ventilation controller')" /></label>
 
-        <label>{{ $t('Device ID (optional)') }} <input v-model="manualId" type="number" min="0" max="4194303" /></label>
+        <label class="gk-entry" for="gk-manualId"><span>{{ $t('Device ID (optional)') }}</span><input id="gk-manualId" v-model="manualId" type="number" min="0" max="4194303" :placeholder="$t('e.g. 1001')" /></label>
 
         <tlt-button :disabled="controlBusy || importBusy" @click="saveManual">{{ $t('Add / update device') }}</tlt-button>
 
@@ -103,9 +103,9 @@
 
     <tlt-card v-if="pointDevice !== null" :title="$t('Point selection') + ' — ' + pointDevice">
 
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <div class="gk-entry-row">
 
-        <label>{{ $t('Search name, description or object ID') }} <input v-model="pointQuery" maxlength="192" @keyup.enter="loadPoints(0)" /></label>
+        <label class="gk-entry gk-entry-search" for="gk-pointQuery"><span>{{ $t('Search name, description or object ID') }}</span><input id="gk-pointQuery" v-model="pointQuery" maxlength="192" @keyup.enter="loadPoints(0)" :placeholder="$t('Type a name, description or object ID…')" /></label>
 
         <tlt-select v-model="pointType" :readonly="false" :data-source="pointTypes" style="width:180px" />
 
@@ -123,9 +123,9 @@
 
         <span>{{ $t('Select all matching points, including other pages') }} ({{ pointTotal }})</span>
 
-        <tlt-button :disabled="controlBusy || importBusy" @click="pointSelected=pointRows.map(p => p.key); pointAll=false">{{ $t('Select this page') }}</tlt-button>
+        <tlt-button :disabled="controlBusy || importBusy" @click="pointSelected=pointRows.map(p => p.key); pointAll=false">{{ $t('Select loaded points') }} ({{ pointRows.length }})</tlt-button>
 
-        <span>{{ pointAll ? pointTotal : pointSelected.length }} {{ $t('selected') }}</span>
+        <span>{{ pointAll ? pointTotal : pointSelected.length }} {{ $t('selected') }} — {{ pointAll ? $t('All search results') : $t('Loaded points only') }}</span>
 
         <tlt-button :disabled="controlBusy || importBusy || (!pointAll && !pointSelected.length)" @click="setPoints(true)">{{ $t('Enable polling') }}</tlt-button>
 
@@ -1073,3 +1073,12 @@ export default {
 
 
 
+
+<style scoped>
+.gk-entry-row { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end; margin:16px 0; }
+.gk-entry { display:flex; flex-direction:column; gap:8px; width:220px; max-width:100%; }
+.gk-entry-search { width:360px; }
+.gk-entry input { box-sizing:border-box; width:100%; min-height:38px; padding:8px 10px; border:1px solid rgba(127,127,127,.55); border-radius:6px; background:transparent; color:inherit; font:inherit; }
+.gk-entry input::placeholder { color:inherit; opacity:.55; }
+.gk-entry input:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
+</style>

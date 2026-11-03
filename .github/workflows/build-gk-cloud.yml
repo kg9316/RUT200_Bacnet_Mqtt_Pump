@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 64: MQTT disabled on fresh installs; preserve settings on upgrades.
+# Release 65: Clear search/manual device inputs and explicit point selection scope.
 
 on:
   workflow_dispatch:

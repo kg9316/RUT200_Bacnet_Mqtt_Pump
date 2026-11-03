@@ -485,7 +485,8 @@ export default {
 
         { label: this.$t('Authentication error'), value: this.status.authLastError || '-' },
 
-        { label: this.$t('Topic root'), value: this.status.topicRoot || '-' },
+        ...((this.status.mqttMode || this.config.mqtt_mode) === 'generic'
+          ? [{ label: this.$t('Topic root'), value: this.status.topicRoot || '-' }] : []),
 
       ];
 

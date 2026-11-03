@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 65: Clear search/manual device inputs and explicit point selection scope.
+# Release 66: Hide generic MQTT topic root from GK Cloud status.
 
 on:
   workflow_dispatch:

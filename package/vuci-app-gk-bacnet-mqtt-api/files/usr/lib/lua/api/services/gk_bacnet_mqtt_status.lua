@@ -28,6 +28,13 @@ function Service:GET_TYPE_status()
         id=imported.id, ok=imported.ok, error=imported.error, added=imported.added, updated=imported.updated, rows=imported.rows, total=imported.total, changed=imported.changed, manual=imported.manual, newEnabled=imported.newEnabled })
 end
 
+-- Lua serializers can turn empty tables into []. Omit optional empty maps
+-- instead, so every export remains valid input for the native importer.
+local function nonempty(value)
+    if type(value) == "table" and next(value) ~= nil then return value end
+    return nil
+end
+
 function Service:GET_TYPE_points()
     local raw = read_file("/etc/gk-bacnet-mqtt/tags.json")
     local registry = raw and json.parse(raw)
@@ -38,7 +45,7 @@ function Service:GET_TYPE_points()
         if device then
             local p = type(entry) == "string" and { t = entry } or entry
             points[#points + 1] = { t = p.t, n = p.n or "", u = p.u or "", d = p.d or "",
-                di = tonumber(device), ot = tonumber(object_type), oi = tonumber(instance), s = p.s, x = p.x }
+                di = tonumber(device), ot = tonumber(object_type), oi = tonumber(instance), s = nonempty(p.s), x = p.x }
         end
     end
     table.sort(points, function(a, b)
@@ -48,8 +55,10 @@ function Service:GET_TYPE_points()
     end)
     local cursor = uci.cursor()
     local controller = cursor:get("gk_bacnet_mqtt", "main", "controller_id") or ""
+    local cfg = registry and registry._cfg
+    local exported_cfg = cfg and nonempty({ m = nonempty(cfg.m), n = nonempty(cfg.n) })
     return self:ResponseOK({ schemaVersion = 2, controllerId = controller,
-        exportedAt = os.date("!%Y-%m-%dT%H:%M:%SZ"), devices = registry and registry._dn or {}, _cfg = registry and registry._cfg or {}, points = points })
+        exportedAt = os.date("!%Y-%m-%dT%H:%M:%SZ"), devices = registry and nonempty(registry._dn), _cfg = exported_cfg, points = points })
 end
 
 function Service:GET_TYPE_interfaces()

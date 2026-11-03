@@ -129,7 +129,8 @@ static const char *import_document(struct json_object *doc, unsigned *added, uns
         }
     }
     struct json_object *cfg=field(doc,"_cfg");
-    if(cfg) {
+    /* Older Lua exports encode an empty table as []; it carries no settings. */
+    if(cfg && !(json_object_is_type(cfg,json_type_array) && json_object_array_length(cfg)==0)) {
         if(!valid_controls(cfg)){error="Invalid device settings";goto done;}
         json_object_object_add(candidate,"_cfg",json_object_get(cfg));
     }
@@ -207,7 +208,7 @@ void tag_registry_import_if_due(void)
     }
     unlink(IMPORT_DIR "/request.json");
     rmdir(IMPORT_DIR "/busy");
-    if(!field(request,"action")) LOG_INFOF("GUID import %s: added=%u existing=%u",error?"rejected":"completed",error?0:added,error?0:updated);
+    if(!field(request,"action")) LOG_INFOF("GUID import %s: added=%u existing=%u reason=%s",error?"rejected":"completed",error?0:added,error?0:updated,error?error:"none");
     if (request) json_object_put(request);
     json_object_put(result);
 }

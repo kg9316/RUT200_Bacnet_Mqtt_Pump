@@ -330,6 +330,7 @@ export default {
       config: {
 
         enabled: '0',
+        mqtt_enabled: '0',
 
         bacnet_interface: '',
 
@@ -449,7 +450,7 @@ export default {
 
         { label: this.$t('Package version'), value: this.status.packageVersion || '-' },
 
-        { label: this.$t('Service'), value: !this.status.running ? this.$t('Stopped') : this.status.enabled === false ? this.$t('Disabled') : this.$t('Running'), dot: this.status.running && this.status.enabled !== false ? 'ok' : 'bad' },
+        { label: this.$t('Service'), value: !this.status.running ? this.$t('Stopped') : this.$t('Running'), dot: this.status.running ? 'ok' : 'bad' },
 
         { label: this.$t('BACnet'), value: this.$t(({disabled:'Disabled',error:'Error',discovering:'Discovering',running:'Running'})[this.status.bacnetState] || 'Stopped'), dot: this.status.bacnetActive ? 'ok' : 'bad' },
 
@@ -463,7 +464,7 @@ export default {
 
         { label: this.$t('BACnet error'), value: this.status.bacnetLastError || '-' },
 
-        { label: this.$t('MQTT'), value: this.status.enabled === false ? this.$t('Disabled') : this.status.mqttConnected ? this.$t('Connected') : this.$t('Disconnected'), dot: this.status.mqttConnected ? 'ok' : 'bad' },
+        { label: this.$t('MQTT'), value: this.status.mqttEnabled === false ? this.$t('Disabled') : this.status.mqttConnected ? this.$t('Connected') : this.$t('Disconnected'), dot: this.status.mqttConnected ? 'ok' : 'bad' },
 
         { label: this.$t('BACnet devices'), value: this.status.devices },
 
@@ -494,7 +495,8 @@ export default {
 
       return [
 
-        { key: 'enabled', label: this.$t('Enabled'), type: 'switch' },
+        { key: 'enabled', label: this.$t('BACnet enabled'), type: 'switch' },
+        { key: 'mqtt_enabled', label: this.$t('MQTT enabled'), type: 'switch' },
 
         { key: 'bacnet_interface', label: this.$t('BACnet interface'), type: 'select', options: this.interfaces },
 

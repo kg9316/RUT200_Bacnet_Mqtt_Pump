@@ -154,7 +154,8 @@ extern bool g_mobile_profile;
 extern char g_uplink[64];
 extern unsigned g_rp_timeout_ms;
 extern char g_bacnet_interface[64];
-extern bool g_enabled;
+extern bool g_enabled; /* BACnet enabled; legacy UCI enabled key. */
+extern bool g_mqtt_enabled;
 
 uint64_t monotonic_ms(void);
 time_t unix_time_now(void);

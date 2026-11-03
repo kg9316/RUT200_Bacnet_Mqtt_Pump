@@ -16,6 +16,7 @@ int g_mqtt_port=8883;
 unsigned g_rpm_batch_max=30;
 unsigned g_poll_ms=5000,g_discovery_ms=10000,g_max_age_sec=300;
 unsigned g_min_send_sec=300;
+bool g_mqtt_enabled=true;
 bool g_mobile_profile=true;
 char g_uplink[64]="unknown";
 size_t device_count(void) { return 1; }
@@ -54,7 +55,7 @@ int main(void) {
     assert(json_object_object_get_ex(root,"bacnetRequests",&v) && json_object_get_int(v)==10);
     json_object_put(root);
     unlink(STATUS_FILE); /* Windows rename does not replace an existing target. */
-    g_enabled=false;status_write_now();root=json_object_from_file(STATUS_FILE);
+    g_enabled=false;g_mqtt_enabled=false;status_write_now();root=json_object_from_file(STATUS_FILE);
     assert(json_object_object_get_ex(root,"bacnetState",&v) && !strcmp(json_object_get_string(v),"disabled"));
     assert(json_object_object_get_ex(root,"mqttConnected",&v) && !json_object_get_boolean(v));
     assert(json_object_object_get_ex(root,"bacnetActive",&v) && !json_object_get_boolean(v));

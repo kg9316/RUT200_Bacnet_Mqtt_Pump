@@ -274,7 +274,9 @@ static void test_imports(void)
     assert(reconnects==previous_reconnects+1); /* No reconnect for an unchanged identity. */
     json_object_put(doc);
     const char *exported="{\"controllerId\":\"controller-A\",\"points\":[{\"di\":100,\"ot\":5,\"oi\":1,\"t\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"n\":\"Fan restored\"}]}";
-    doc=json_tokener_parse(exported);assert(!import_document(doc,&added,&updated));json_object_put(doc);
+    doc=json_tokener_parse(exported);
+    json_object_object_add(doc,"_cfg",json_object_new_array());
+    assert(!import_document(doc,&added,&updated));json_object_put(doc);
     struct json_object *point,*states;
     assert(json_object_object_get_ex(registry,"100:5:1",&point));
     assert(json_object_object_get_ex(point,"s",&states)); /* Missing imported fields retain old metadata. */

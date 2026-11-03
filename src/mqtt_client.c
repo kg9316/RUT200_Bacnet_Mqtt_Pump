@@ -51,6 +51,7 @@ char g_uplink[64] = "unknown";
 unsigned g_rp_timeout_ms = DEFAULT_RP_TIMEOUT_MS;
 char g_bacnet_interface[64] = DEFAULT_BACNET_IF;
 bool g_enabled = true;
+bool g_mqtt_enabled = true;
 
 static void mqtt_on_connect(struct mosquitto *mosq, void *userdata, int rc)
 {
@@ -87,7 +88,7 @@ static bool mqtt_publish_raw(const char *topic, const char *payload, bool retain
 {
     int rc;
 
-    if (!g_enabled || !g_mosq || !g_mqtt_connected)
+    if (!g_mqtt_enabled || !g_mosq || !g_mqtt_connected)
         return false;
 
     rc = mosquitto_publish(g_mosq, NULL, topic, (int)strlen(payload), payload, 0, retain);
@@ -327,7 +328,7 @@ void mqtt_client_loop(void)
     uplink_collect(now);
     int rc;
     static bool paused;
-    if (!g_enabled) {
+    if (!g_mqtt_enabled) {
         if (!paused) {
             destroy_client();
             gk_cloud_reset();
@@ -339,6 +340,7 @@ void mqtt_client_loop(void)
     }
     if (paused) LOG_INFOF("MQTT enabled; connecting");
     paused = false;
+    uplink_tick(now);
     gk_cloud_loop();
     if (g_mqtt_settings.gk_cloud) {
         if (!gk_cloud_token()) { destroy_client(); return; }
@@ -353,7 +355,6 @@ void mqtt_client_loop(void)
         if (create_client() != MOSQ_ERR_SUCCESS) return;
         next_reconnect_ms = now + 30000; /* allow TLS handshake and CONNACK */
     }
-    uplink_tick(now);
     rc = mosquitto_loop(g_mosq, 0, 1);
     if (rc != MOSQ_ERR_SUCCESS || (!g_mqtt_connected && now >= next_reconnect_ms)) {
         mqtt_error(rc == MOSQ_ERR_SUCCESS ? "CONNACK timeout" : "network loop failed", rc == MOSQ_ERR_SUCCESS ? MOSQ_ERR_CONN_LOST : rc);

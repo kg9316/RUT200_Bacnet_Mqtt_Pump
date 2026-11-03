@@ -2,8 +2,8 @@
 -- the lifetime of this process group, including ip/ubus, to three seconds.
 local json = require("luci.jsonc")
 local dst, src, mark = arg[1], arg[2], arg[3]
-if not dst or not src or not mark or not dst:match("^[%x.:]+$") or
-   not src:match("^[%x.:]+$") or not mark:match("^%d+$") then os.exit(1) end
+if not dst or not src or not mark or not dst:match("^[%w.:%-]+$") or dst:sub(1,1)=="-" or
+   (src ~= "-" and not src:match("^[%x.:]+$")) or not mark:match("^%d+$") then os.exit(1) end
 local function read(command)
     local p = io.popen(command)
     if not p then return "" end
@@ -11,7 +11,12 @@ local function read(command)
     p:close()
     return value
 end
-local route = read("ip route get " .. dst .. " from " .. src .. " mark " .. mark .. " 2>/dev/null")
+if not dst:match("^[%d.]+$") and not dst:find(":",1,true) then
+    dst = read("resolveip -4 -t 1 " .. dst .. " 2>/dev/null"):match("[%d]+%.[%d]+%.[%d]+%.[%d]+")
+    if not dst then os.exit(1) end
+end
+local source = src == "-" and "" or (" from " .. src)
+local route = read("ip route get " .. dst .. source .. " mark " .. mark .. " 2>/dev/null")
 local dev = route:match("%sdev%s+([%w_.:%-]+)")
 if not dev or dev:match("^tun") or dev:match("^tap") or dev:match("^wg") then os.exit(1) end
 local data = json.parse(read("ubus -t 1 call network.interface dump 2>/dev/null"))

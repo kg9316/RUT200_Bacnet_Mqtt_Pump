@@ -50,7 +50,8 @@ void status_write_now(void)
     tag_registry_flush_metadata();
     json_object_object_add(root,"deviceDetails",devices);
     BOOL(root,"running",true); BOOL(root,"enabled",g_enabled);
-    BOOL(root,"mqttConnected",g_enabled && mqtt_client_is_connected());
+    BOOL(root,"mqttEnabled",g_mqtt_enabled);
+    BOOL(root,"mqttConnected",g_mqtt_enabled && mqtt_client_is_connected());
     BOOL(root,"bacnetActive",g_enabled && g_bacnet_active);
     STR(root,"bacnetState",!g_enabled?"disabled":!g_bacnet_active?"error":g_bacnet_last_reply?"running":"discovering");
     STR(root,"bacnetInterface",g_bacnet_interface);

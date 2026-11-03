@@ -87,5 +87,6 @@ jobs:
           cc -O1 -I"$RUNNER_TEMP/bacnet/src" -I"$RUNNER_TEMP/bacnet/ports/linux" tests/test_tsm.c -o "$RUNNER_TEMP/test-tsm"
           "$RUNNER_TEMP/test-tsm"
           lua5.1 tests/test_api.lua package/vuci-app-gk-bacnet-mqtt-api/files/usr/lib/lua/api/services/gk_bacnet_mqtt_config.lua
+          lua5.1 tests/test_export.lua package/vuci-app-gk-bacnet-mqtt-api/files/usr/lib/lua/api/services/gk_bacnet_mqtt_status.lua
           lua5.1 tests/test_uplink.lua package/gk-bacnet-mqtt/files/gk-mqtt-uplink.lua
           node tests/test_ui.cjs package/vuci-app-gk-bacnet-mqtt-ui/src/src/views/services/GkBacnetMqtt.vue

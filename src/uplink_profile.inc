@@ -45,9 +45,12 @@ static void uplink_tick(uint64_t now)
 {
     if(uplink_pid || now<uplink_next)return;
     uplink_next=now+5000;
-    int fd=mosquitto_socket(g_mosq);
+    int fd=g_mosq?mosquitto_socket(g_mosq):-1;
     struct sockaddr_storage peer,local;socklen_t size=sizeof(peer);
-    char dst[INET6_ADDRSTRLEN],src[INET6_ADDRSTRLEN],mark_text[24];
+    char dst[sizeof(g_mqtt_host)],src[INET6_ADDRSTRLEN],mark_text[24];
+    unsigned mark=0;
+    safe_copy(dst,sizeof(dst),g_mqtt_host);safe_copy(src,sizeof(src),"-");
+    if(fd>=0) {
     if(fd<0 || getpeername(fd,(struct sockaddr*)&peer,&size)) { uplink_unknown();return; }
     size=sizeof(local);
     if(getsockname(fd,(struct sockaddr*)&local,&size)) { uplink_unknown();return; }
@@ -56,8 +59,9 @@ static void uplink_tick(uint64_t now)
     const void *pa=af==AF_INET?(void*)&((struct sockaddr_in*)&peer)->sin_addr:(void*)&((struct sockaddr_in6*)&peer)->sin6_addr;
     const void *la=af==AF_INET?(void*)&((struct sockaddr_in*)&local)->sin_addr:(void*)&((struct sockaddr_in6*)&local)->sin6_addr;
     if(!inet_ntop(af,pa,dst,sizeof(dst)) || !inet_ntop(af,la,src,sizeof(src)))return;
-    unsigned mark=0;size=sizeof(mark);
+    size=sizeof(mark);
     getsockopt(fd,SOL_SOCKET,SO_MARK,&mark,&size);
+    }
     snprintf(mark_text,sizeof(mark_text),"%u",mark);
     int pipes[2];if(pipe(pipes))return;
     pid_t pid=fork();
@@ -67,7 +71,9 @@ static void uplink_tick(uint64_t now)
         /* Do not leak MQTT sockets or other daemon descriptors to Lua. */
         long limit=sysconf(_SC_OPEN_MAX);if(limit<0)limit=1024;
         for(int i=3;i<limit;i++)close(i);
-        execl("/usr/bin/lua","lua","/usr/sbin/gk-mqtt-uplink.lua",dst,src,mark_text,(char*)NULL);
+        const char *helper=access("/usr/local/usr/sbin/gk-mqtt-uplink.lua",R_OK)==0?
+            "/usr/local/usr/sbin/gk-mqtt-uplink.lua":"/usr/sbin/gk-mqtt-uplink.lua";
+        execl("/usr/bin/lua","lua",helper,dst,src,mark_text,(char*)NULL);
         _exit(127);
     }
     close(pipes[1]);

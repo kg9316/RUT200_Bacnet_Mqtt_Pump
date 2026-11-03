@@ -13,10 +13,11 @@ for (const [name, getter] of Object.entries(component.computed)) {
 const fields = () => component.computed.configFields.call(page).map(f => f.key);
 assert.equal(page.logMode,'all');
 assert(!page.deviceColumns.some(c=>c.dataIndex==='retryIn'));
-page.status.running=true;page.status.enabled=false;page.status.bacnetState='disabled';
+page.status.running=true;page.status.enabled=false;page.status.mqttEnabled=false;page.status.bacnetState='disabled';
 assert.equal(page.statusRows.find(r=>r.label==='BACnet').value,'Disabled');
 assert.equal(page.statusRows.find(r=>r.label==='MQTT').value,'Disabled');
-assert.equal(page.statusRows.find(r=>r.label==='Service').value,'Disabled');
+assert.equal(page.statusRows.find(r=>r.label==='Service').value,'Running');
+page.status.mqttEnabled=true;assert.equal(page.statusRows.find(r=>r.label==='MQTT').value,'Disconnected');
 page.status.enabled=true;page.status.bacnetActive=true;page.status.bacnetState='running';
 assert.equal(page.statusRows.find(r=>r.label==='BACnet').value,'Running');
 assert(fields().includes('rpm_batch_max'));

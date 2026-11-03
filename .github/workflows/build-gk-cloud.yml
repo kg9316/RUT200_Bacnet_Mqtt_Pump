@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 62: Mobile send profiles, state descriptions and Norwegian BACnet text.
+# Release 63: Independent BACnet/MQTT switches, uplink detection and JSON round-trip fixes.
 
 on:
   workflow_dispatch:

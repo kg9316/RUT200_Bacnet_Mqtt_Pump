@@ -73,7 +73,7 @@ int main(int argc, char **argv)
     while (g_running) {
         config_reload_if_due();
         if (g_enabled != was_enabled) {
-            LOG_INFOF("Gateway %s: BACnet and MQTT",g_enabled?"enabled":"disabled");
+            LOG_INFOF("BACnet %s",g_enabled?"enabled":"disabled");
             next_bacnet_start = 0;
             was_enabled = g_enabled;
         }

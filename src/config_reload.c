@@ -90,6 +90,7 @@ static void reload_from_disk(bool initial)
     if(*cov_text && !*cov_end && isfinite(cov) && cov>=0)g_mobile_cov_threshold=cov;
     else LOG_ERRORF("invalid mobile COV threshold; retaining previous value");
     g_enabled = strcmp(OPT("enabled", "1"), "1") == 0;
+    g_mqtt_enabled = strcmp(OPT("mqtt_enabled", OPT("enabled", "1")), "1") == 0;
     safe_copy(interface, sizeof(interface), OPT("bacnet_interface", DEFAULT_BACNET_IF));
     if (strcmp(interface, g_bacnet_interface) != 0) {
         safe_copy(g_bacnet_interface, sizeof(g_bacnet_interface), interface);

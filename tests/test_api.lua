@@ -70,3 +70,9 @@ for _,v in ipairs({"-0.1", "nan", "inf", "1e999", "bad", ""}) do
  assert(not service:POST_TYPE_config().ok)
 end
 print("PASS: COV decimal threshold, zero tolerance setting and invalid values")
+
+service.arguments={data={enabled="1",mqtt_enabled="0"}}
+result=service:POST_TYPE_config();assert(result.ok and values.mqtt_enabled=="0" and values.enabled=="1")
+service.arguments={data={enabled="0",mqtt_enabled="1"}}
+result=service:POST_TYPE_config();assert(result.ok and values.mqtt_enabled=="1" and values.enabled=="0")
+print("PASS: independent persisted BACnet and MQTT switches")

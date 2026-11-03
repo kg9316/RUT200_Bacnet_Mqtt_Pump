@@ -122,11 +122,12 @@ int main(void)
     mqtt_client_loop();
     assert(mqtt_client_is_connected() && connect_calls == 3);
     unsigned connections_before=connect_calls;
-    g_enabled=false;
+    g_enabled=false;mqtt_client_loop();assert(mqtt_client_is_connected());g_enabled=true;
+    g_mqtt_enabled=false;
     mqtt_client_loop();
     assert(!mqtt_client_is_connected() && !g_mosq && !test_token);
     mqtt_client_loop();assert(connect_calls==connections_before);
-    g_enabled=true;
+    g_mqtt_enabled=true;
     mqtt_client_loop();assert(mqtt_client_is_connected() && connect_calls==connections_before+1);
     /* COV-only mode, per-point minimum, first value and failed-send retries. */
     g_max_age_sec=0;g_min_send_sec=300;
@@ -151,9 +152,9 @@ int main(void)
     clock_ms=point.last_publish_ms+300000;
     mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
     g_max_age_sec=0;g_min_send_sec=0;point.numeric_value=5;
-    g_enabled=false;
+    g_mqtt_enabled=false;
     mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued && point.last_pub_numeric==3);
-    g_enabled=true;
+    g_mqtt_enabled=true;
     mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued && point.last_pub_numeric==5);
     point.object_type=OBJECT_ANALOG_INPUT;point.last_pub_numeric=0;g_cov_threshold=0.1;
     point.numeric_value=0.09;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);

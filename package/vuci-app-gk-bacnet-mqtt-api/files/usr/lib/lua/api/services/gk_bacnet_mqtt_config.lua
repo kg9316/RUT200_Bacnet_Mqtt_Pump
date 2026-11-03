@@ -2,7 +2,7 @@ local FunctionService = require("api/FunctionService")
 local uci = require("uci")
 local Service = FunctionService:new()
 local OPTIONS = {
-    "enabled", "bacnet_interface", "mqtt_host", "mqtt_port", "topic_root",
+    "enabled", "mqtt_enabled", "bacnet_interface", "mqtt_host", "mqtt_port", "topic_root",
     "mobile_max_age_sec", "mobile_min_send_sec", "mobile_cov_threshold", "cov_threshold", "rpm_batch_max", "poll_ms", "discovery_ms", "max_age_sec", "min_send_sec", "mqtt_mode", "mqtt_tls",
     "mqtt_ca_file", "mqtt_cert_file", "mqtt_key_file", "controller_id",
 }
@@ -10,6 +10,7 @@ local OPTIONS = {
 local function public_config(values)
     local data = {}
     for _, key in ipairs(OPTIONS) do data[key] = values[key] end
+    data.mqtt_enabled = values.mqtt_enabled or values.enabled or "1"
     data.rpm_batch_max = values.rpm_batch_max or "30"
     data.min_send_sec = values.min_send_sec or "0"
     data.cov_threshold = values.cov_threshold or "0"
@@ -27,6 +28,7 @@ function Service:GET_TYPE_config()
 end
 
 local function validate(values)
+    values.mqtt_enabled = values.mqtt_enabled or values.enabled or "1"
     values.rpm_batch_max = values.rpm_batch_max or "30"
     values.min_send_sec = values.min_send_sec or "0"
     values.cov_threshold = values.cov_threshold or "0"
@@ -40,7 +42,7 @@ local function validate(values)
     end
     local mode = values.mqtt_mode or "generic"
     if mode ~= "generic" and mode ~= "gk_cloud" then return "Invalid MQTT mode" end
-    for _, key in ipairs({"enabled", "mqtt_tls"}) do
+    for _, key in ipairs({"enabled", "mqtt_enabled", "mqtt_tls"}) do
         if values[key] ~= nil and values[key] ~= "0" and values[key] ~= "1" then
             return "Invalid switch value"
         end

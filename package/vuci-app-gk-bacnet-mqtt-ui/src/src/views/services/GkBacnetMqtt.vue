@@ -71,13 +71,13 @@
 
       <div class="gk-entry-row">
 
-        <label class="gk-entry" for="gk-manualIp"><span>{{ $t('IPv4 address') }}</span><input id="gk-manualIp" v-model="manualIp" placeholder="192.168.1.20"  /></label>
+        <label class="gk-entry" style="display:flex;flex-direction:column;font-size:16px;line-height:1.5" for="gk-manualIp"><span style="display:block;margin-bottom:10px">{{ $t('IPv4 address') }}</span><input id="gk-manualIp" style="font-size:16px;line-height:1.5;min-height:42px;padding:8px 12px;border:1px solid rgba(127,127,127,.55);border-radius:6px;background:transparent;color:inherit;box-sizing:border-box;width:100%" v-model="manualIp" placeholder="192.168.1.20"  /></label>
 
-        <label class="gk-entry" for="gk-manualPort"><span>{{ $t('Port') }}</span><input id="gk-manualPort" v-model="manualPort" type="number" min="1" max="65535"  /></label>
+        <label class="gk-entry" style="display:flex;flex-direction:column;font-size:16px;line-height:1.5" for="gk-manualPort"><span style="display:block;margin-bottom:10px">{{ $t('Port') }}</span><input id="gk-manualPort" style="font-size:16px;line-height:1.5;min-height:42px;padding:8px 12px;border:1px solid rgba(127,127,127,.55);border-radius:6px;background:transparent;color:inherit;box-sizing:border-box;width:100%" v-model="manualPort" type="number" min="1" max="65535"  /></label>
 
-        <label class="gk-entry" for="gk-manualName"><span>{{ $t('Name (optional)') }}</span><input id="gk-manualName" v-model="manualName" maxlength="95" :placeholder="$t('e.g. Ventilation controller')" /></label>
+        <label class="gk-entry" style="display:flex;flex-direction:column;font-size:16px;line-height:1.5" for="gk-manualName"><span style="display:block;margin-bottom:10px">{{ $t('Name (optional)') }}</span><input id="gk-manualName" style="font-size:16px;line-height:1.5;min-height:42px;padding:8px 12px;border:1px solid rgba(127,127,127,.55);border-radius:6px;background:transparent;color:inherit;box-sizing:border-box;width:100%" v-model="manualName" maxlength="95" :placeholder="$t('e.g. Ventilation controller')" /></label>
 
-        <label class="gk-entry" for="gk-manualId"><span>{{ $t('Device ID (optional)') }}</span><input id="gk-manualId" v-model="manualId" type="number" min="0" max="4194303" :placeholder="$t('e.g. 1001')" /></label>
+        <label class="gk-entry" style="display:flex;flex-direction:column;font-size:16px;line-height:1.5" for="gk-manualId"><span style="display:block;margin-bottom:10px">{{ $t('Device ID (optional)') }}</span><input id="gk-manualId" style="font-size:16px;line-height:1.5;min-height:42px;padding:8px 12px;border:1px solid rgba(127,127,127,.55);border-radius:6px;background:transparent;color:inherit;box-sizing:border-box;width:100%" v-model="manualId" type="number" min="0" max="4194303" :placeholder="$t('e.g. 1001')" /></label>
 
         <tlt-button :disabled="controlBusy || importBusy" @click="saveManual">{{ $t('Add / update device') }}</tlt-button>
 
@@ -105,7 +105,7 @@
 
       <div class="gk-entry-row">
 
-        <label class="gk-entry gk-entry-search" for="gk-pointQuery"><span>{{ $t('Search name, description or object ID') }}</span><input id="gk-pointQuery" v-model="pointQuery" maxlength="192" @keyup.enter="loadPoints(0)" :placeholder="$t('Type a name, description or object ID…')" /></label>
+        <label class="gk-entry gk-entry-search" style="display:flex;flex-direction:column;font-size:16px;line-height:1.5" for="gk-pointQuery"><span style="display:block;margin-bottom:10px">{{ $t('Search name, description or object ID') }}</span><input id="gk-pointQuery" style="font-size:16px;line-height:1.5;min-height:42px;padding:8px 12px;border:1px solid rgba(127,127,127,.55);border-radius:6px;background:transparent;color:inherit;box-sizing:border-box;width:100%" v-model="pointQuery" maxlength="192" @keyup.enter="loadPoints(0)" :placeholder="$t('Type a name, description or object ID…')" /></label>
 
         <tlt-select v-model="pointType" :readonly="false" :data-source="pointTypes" style="width:180px" />
 
@@ -1077,7 +1077,7 @@ export default {
 
 <style scoped>
 .gk-entry-row { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end; margin:16px 0; }
-.gk-entry { display:flex; flex-direction:column; gap:8px; width:220px; max-width:100%; }
+.gk-entry { display:flex; flex-direction:column; gap:0; width:220px; max-width:100%; }
 .gk-entry-search { width:360px; }
 .gk-entry input { box-sizing:border-box; width:100%; min-height:38px; padding:8px 10px; border:1px solid rgba(127,127,127,.55); border-radius:6px; background:transparent; color:inherit; font:inherit; }
 .gk-entry input::placeholder { color:inherit; opacity:.55; }

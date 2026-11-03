@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 68: Reorder configuration, collapse sections and group device deletion.
+# Release 69: Discover all devices sharing manual endpoints; accept numeric Device IDs.
 
 on:
   workflow_dispatch:

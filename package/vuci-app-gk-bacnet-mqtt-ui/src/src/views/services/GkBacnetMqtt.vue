@@ -117,10 +117,6 @@
       </template>
 
     </tlt-table>
-    </tlt-card>
-
-
-
     <tlt-card :initial-active="false" :active="false" :title="$t('Manual BACnet devices')">
 
       <p>{{ $t('Add a direct BACnet/IP endpoint. Point discovery starts when the device responds. Offline endpoints are saved and retried.') }}</p>
@@ -133,7 +129,7 @@
 
         <label class="gk-entry" style="display:flex;flex-direction:column;font-size:16px;line-height:1.5" for="gk-manualName"><span style="display:block;margin-bottom:10px">{{ $t('Name (optional)') }}</span><input id="gk-manualName" style="font-size:16px;line-height:1.5;min-height:42px;padding:8px 12px;border:1px solid rgba(127,127,127,.55);border-radius:6px;background:transparent;color:inherit;box-sizing:border-box;width:100%" v-model="manualName" maxlength="95" :placeholder="$t('e.g. Ventilation controller')" /></label>
 
-        <label class="gk-entry" style="display:flex;flex-direction:column;font-size:16px;line-height:1.5" for="gk-manualId"><span style="display:block;margin-bottom:10px">{{ $t('Device ID (optional)') }}</span><input id="gk-manualId" style="font-size:16px;line-height:1.5;min-height:42px;padding:8px 12px;border:1px solid rgba(127,127,127,.55);border-radius:6px;background:transparent;color:inherit;box-sizing:border-box;width:100%" v-model="manualId" type="number" min="0" max="4194303" :placeholder="$t('e.g. 1001')" /></label>
+        <label class="gk-entry" style="display:flex;flex-direction:column;font-size:16px;line-height:1.5" for="gk-manualId"><span style="display:block;margin-bottom:10px">{{ $t('Device ID (optional; blank = discover all)') }}</span><input id="gk-manualId" style="font-size:16px;line-height:1.5;min-height:42px;padding:8px 12px;border:1px solid rgba(127,127,127,.55);border-radius:6px;background:transparent;color:inherit;box-sizing:border-box;width:100%" v-model="manualId" type="number" min="0" max="4194303" :placeholder="$t('e.g. 1001')" /></label>
 
         <tlt-button :disabled="controlBusy || importBusy" @click="saveManual">{{ $t('Add / update device') }}</tlt-button>
 
@@ -145,7 +141,7 @@
 
       <div v-for="m in manualTargets" :key="m.ip + ':' + m.p" style="display:flex;gap:12px;align-items:center;margin-top:8px">
 
-        <span>{{ m.ip }}:{{ m.p }} — {{ m.n || '-' }} — {{ m.id == null ? $t('Waiting for Device ID') : m.id }}</span>
+        <span>{{ m.ip }}:{{ m.p }} — {{ m.n || '-' }} — {{ m.id == null ? $t('Discover all Device IDs') : m.id }}</span>
 
         <tlt-button :disabled="controlBusy || importBusy" @click="removeManual(m)">{{ $t('Remove manual endpoint') }}</tlt-button>
 
@@ -154,6 +150,11 @@
       <p v-if="controlMessage" role="status">{{ controlMessage }}</p>
 
     </tlt-card>
+    </tlt-card>
+
+
+
+
 
 
 
@@ -654,7 +655,8 @@ export default {
 
         const target={ip:this.manualIp.trim(),p:Number(this.manualPort),n:this.manualName.trim()};
 
-        if(this.manualId.trim()!=='')target.id=Number(this.manualId);
+        const deviceId = String(this.manualId ?? '').trim();
+        if(deviceId !== '')target.id=Number(deviceId);
 
         await this.control('manual_save',{target});
 

@@ -67,6 +67,7 @@ static int test_rename(const char *from, const char *to)
 #define TAG_REGISTRY_PATH "./tags-test.json"
 #endif
 #include "../src/tag_registry.c"
+bool address_get_by_device(uint32_t id,unsigned *apdu,BACNET_ADDRESS *a){(void)id;(void)apdu;(void)a;return false;}
 #include "../src/device_table.c"
 
 static void write_registry(const char *contents)
@@ -313,7 +314,10 @@ static void test_controls(void)
     BACNET_ADDRESS a;int32_t id;
     assert(tag_registry_manual_target(0,&a,&id)&&id==-1&&a.mac[3]==9&&a.mac[5]==193);
     tag_registry_manual_seen(123,&a);assert(tag_registry_is_manual(123));
-    result=run_control("{\"action\":\"manual_save\",\"target\":{\"ip\":\"10.0.0.10\",\"p\":47808,\"id\":123}}",false);json_object_put(result);
+    tag_registry_manual_seen(124,&a);assert(tag_registry_is_manual(124));
+    assert(tag_registry_manual_target(0,&a,&id)&&id==-1);
+    tag_registry_manual_seen(125,&a);assert(tag_registry_is_manual(125));
+    assert(tag_registry_manual_target(0,&a,&id)&&id==-1);
     result=run_control("{\"action\":\"manual_save\",\"target\":{\"ip\":\"255.255.255.255\",\"p\":47808}}",false);json_object_put(result);
     result=run_control("{\"action\":\"new_points\",\"device\":123,\"enabled\":false}",true);json_object_put(result);
     DEVICE_STATE *d=find_device(123);
@@ -345,9 +349,11 @@ static void test_controls(void)
     assert(!strcmp(guid,tag_registry_lookup(123,0,0)));
     tag_registry_cleanup();device_table_cleanup();assert(tag_registry_init()==0);tag_registry_restore_devices();
     d=find_device(123);assert(d && d->point_count==205 && d->points[0].poll_disabled && !d->points[1].poll_disabled);
-    assert(!tag_registry_new_points_enabled(123) && tag_registry_is_manual(123));
+    assert(!tag_registry_new_points_enabled(123));
+    assert(tag_registry_manual_target(0,&a,&id)&&id==-1);
+    tag_registry_manual_seen(123,&a);assert(tag_registry_is_manual(123));
     assert(!strcmp(guid,tag_registry_lookup(123,0,0)));
-    assert(tag_registry_manual_target(0,&a,&id)&&id==123);
+    assert(tag_registry_manual_target(0,&a,&id)&&id==-1);
     struct json_object *doc=json_tokener_parse(json_object_to_json_string(registry));unsigned added,updated;
     assert(!import_document(doc,&added,&updated));json_object_put(doc);
     assert(find_device(123)->points[0].poll_disabled && !tag_registry_new_points_enabled(123));
@@ -356,14 +362,14 @@ static void test_controls(void)
     tag_registry_init_point(other,op);char other_guid[37];safe_copy(other_guid,sizeof(other_guid),tag_registry_lookup(1234,0,0));
     result=run_control("{\"action\":\"device_remove\",\"device\":123}",true);json_object_put(result);
     assert(!find_device(123) && !tag_registry_lookup(123,0,0));
-    assert(tag_registry_new_points_enabled(123) && !tag_registry_manual_target(0,&a,&id));
+    assert(tag_registry_new_points_enabled(123) && tag_registry_manual_target(0,&a,&id) && id==-1);
     assert(add_point(other,OBJECT_ANALOG_INPUT,0)==op && other->point_count==1);
     assert(!strcmp(other_guid,tag_registry_lookup(1234,0,0)));
     tag_registry_cleanup();device_table_cleanup();assert(tag_registry_init()==0);tag_registry_restore_devices();
     assert(!find_device(123) && find_device(1234));
     assert(!strcmp(other_guid,tag_registry_lookup(1234,0,0)));
     result=run_control("{\"action\":\"device_remove\",\"device\":1234}",true);json_object_put(result);
-    assert(device_count()==0 && total_points==0);
+    assert(device_count()==2 && find_device(124) && find_device(125) && total_points==0);
     other=get_or_create_device(1234);op=add_point(other,OBJECT_ANALOG_INPUT,0);assert(op && other->point_count==1);
     tag_registry_init_point(other,op);assert(strcmp(other_guid,tag_registry_lookup(1234,0,0)));
     device_table_cleanup();tag_registry_cleanup();

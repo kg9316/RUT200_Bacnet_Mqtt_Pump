@@ -1,5 +1,6 @@
 /* Registry-owned controls. All operations execute on the daemon thread. */
 #include <ctype.h>
+#include "bacnet/basic/binding/address.h"
 #include <math.h>
 
 static struct json_object *field(struct json_object *o,const char *key)
@@ -93,7 +94,17 @@ static void refresh_manual_flags(void)
     struct json_object *m=field(field(registry,"_cfg"),"m");
     for(size_t i=0;m && i<json_object_array_length(m);i++) {
         struct json_object *row=json_object_array_get_idx(m,i),*id=field(row,"id");
-        if(!id)continue;
+        if(!id) {
+            BACNET_ADDRESS target;
+            if(!manual_address(row,&target))continue;
+            for(size_t j=0;j<MAX_DEVICES;j++) {
+                DEVICE_STATE *known=&g_devices[j];BACNET_ADDRESS address;unsigned apdu;
+                if(known->used && address_get_by_device(known->device_id,&apdu,&address) &&
+                   !address.net && address.mac_len==6 && !memcmp(address.mac,target.mac,6))
+                    known->manual_endpoint=true;
+            }
+            continue;
+        }
         DEVICE_STATE *d=get_or_create_device((uint32_t)json_object_get_int(id));
         if(d) {
             d->manual_endpoint=true;
@@ -114,11 +125,8 @@ void tag_registry_manual_seen(uint32_t device,const BACNET_ADDRESS *a)
         if(!manual_address(row,&target) || memcmp(a->mac,target.mac,6))continue;
         struct json_object *id=field(row,"id");
         if(id && (uint32_t)json_object_get_int(id)!=device) continue;
-        if(!id) {
-            /* One device identity must not be associated with two endpoints. */
-            if(tag_registry_is_manual(device))continue;
-            json_object_object_add(row,"id",json_object_new_int64(device));metadata_dirty=true;
-        }
+        /* An endpoint without an explicit ID must remain an unrestricted
+         * discovery target, even after one or more I-Am responses. */
         DEVICE_STATE *d=get_or_create_device(device);if(d)d->manual_endpoint=true;
         if(field(row,"n"))tag_registry_set_device_name(device,json_object_get_string(field(row,"n")));
     }

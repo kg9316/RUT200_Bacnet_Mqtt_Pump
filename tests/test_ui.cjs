@@ -88,6 +88,15 @@ page.$axios = { post: async (url, body) => {
   page.manualIp='10.0.0.8';page.manualPort='47809';page.manualId='0';page.manualName='Device';
   await page.saveManual();
   const saved=commands.find(c=>c.action==='manual_save');assert.equal(saved.data.target.id,0);assert.equal(saved.data.target.p,47809);
+  for (const input of [4110, 0, '4110', '', null]) {
+    page.manualId=input;
+    const start=commands.length;
+    await page.saveManual();
+    const command=commands.slice(start).find(c=>c.action==='manual_save');
+    assert(command, 'Manual save must accept numeric and empty Device IDs');
+    if(input === '' || input === null) assert(!Object.hasOwn(command.data.target,'id'));
+    else assert.equal(command.data.target.id,Number(input));
+  }
   page.deviceSelected=[123,456];page.pointDevice=123;page.loadManual=async()=>{};
   context.window.confirm=()=>false;const previous=commands.length;
   await page.removeDevices([123,456]);assert.equal(commands.length,previous);

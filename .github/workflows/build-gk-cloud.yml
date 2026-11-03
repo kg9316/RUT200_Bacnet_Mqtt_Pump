@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 63: Independent BACnet/MQTT switches, uplink detection and JSON round-trip fixes.
+# Release 64: MQTT disabled on fresh installs; preserve settings on upgrades.
 
 on:
   workflow_dispatch:

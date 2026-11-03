@@ -36,6 +36,31 @@ jobs:
           test -f sdk/tmp/.packageinfo
           test -f sdk/.config
           test -d sdk/package/feeds/vuci/vuci-app-gk-bacnet-mqtt-ui
+      - name: Install package host multilib prerequisites
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          # Each job has a fresh runner; SDK caches do not contain OS packages.
+          # LuaJIT builds its host/minilua generator with gcc -m32.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          sources = [Path('/etc/apt/sources.list')]
+          sources += list(Path('/etc/apt/sources.list.d').glob('*.list'))
+          sources += list(Path('/etc/apt/sources.list.d').glob('*.sources'))
+          for path in sources:
+              if path.is_file():
+                  old = path.read_text()
+                  new = old.replace('http://azure.archive.ubuntu.com/ubuntu', 'https://archive.ubuntu.com/ubuntu')
+                  new = new.replace('https://azure.archive.ubuntu.com/ubuntu', 'https://archive.ubuntu.com/ubuntu')
+                  if new != old:
+                      path.write_text(new)
+          PY
+          APT_OPTIONS=(-o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          timeout --kill-after=15s 2m sudo apt-get "${APT_OPTIONS[@]}" update
+          timeout --kill-after=15s 7m sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTIONS[@]}" install -y gcc-multilib g++-multilib
+          printf '#include <limits.h>\nint main(void) { return 0; }\n' | gcc -m32 -x c - -o "$RUNNER_TEMP/check-multilib"
+          "$RUNNER_TEMP/check-multilib"
+
       - name: Fetch bacnet-stack source
         run: |
           set -euo pipefail

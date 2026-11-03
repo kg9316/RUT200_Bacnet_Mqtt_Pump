@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define GK_UPLINK_TEST
 #define LIBMOSQUITTO_STATIC
 #include "../src/mqtt_client.c"
 
@@ -58,6 +59,7 @@ int mosquitto_publish(struct mosquitto *m,int *mid,const char *topic,int length,
 
 int main(void)
 {
+    g_mobile_profile=false;
     g_min_send_sec=0;
     g_mqtt_settings.gk_cloud = true;
     g_mqtt_settings.tls = true;
@@ -157,7 +159,16 @@ int main(void)
     point.numeric_value=0.09;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
     point.numeric_value=0.1;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
     point.numeric_value=-0.1;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
-    g_cov_threshold=0;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
+    g_cov_threshold=0;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
+    point.last_pub_numeric=0;point.numeric_value=0.00000005;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
+    point.numeric_value=0.0000001;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
+    g_mobile_profile=true;g_mobile_cov_threshold=0;g_mobile_min_send_sec=0;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
+    point.numeric_value=0.0000002;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
+    g_mobile_profile=false;
     g_min_send_sec=300;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);g_min_send_sec=0;
     point.value_kind=VALUE_ENUM;point.object_type=OBJECT_MULTI_STATE_VALUE;point.numeric_value=point.last_pub_numeric;
     mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);

@@ -78,12 +78,17 @@ static void reload_from_disk(bool initial)
     else LOG_ERRORF("invalid RPM maximum; retaining previous limit");
     g_poll_ms = (unsigned)strtoul(OPT("poll_ms", "60000"), NULL, 10);
     g_discovery_ms = (unsigned)strtoul(OPT("discovery_ms", "600000"), NULL, 10);
-    g_max_age_sec = (unsigned)strtoul(OPT("max_age_sec", "0"), NULL, 10);
-    g_min_send_sec = (unsigned)strtoul(OPT("min_send_sec", "300"), NULL, 10);
-    const char *cov_text=OPT("cov_threshold", "0.1");char *cov_end;
+    g_max_age_sec = (unsigned)strtoul(OPT("max_age_sec", "300"), NULL, 10);
+    g_min_send_sec = (unsigned)strtoul(OPT("min_send_sec", "0"), NULL, 10);
+    const char *cov_text=OPT("cov_threshold", "0");char *cov_end;
     double cov=strtod(cov_text,&cov_end);
     if(*cov_text && !*cov_end && isfinite(cov) && cov>=0)g_cov_threshold=cov;
     else LOG_ERRORF("invalid COV threshold; retaining previous value");
+    g_mobile_max_age_sec = (unsigned)strtoul(OPT("mobile_max_age_sec", "0"), NULL, 10);
+    g_mobile_min_send_sec = (unsigned)strtoul(OPT("mobile_min_send_sec", "300"), NULL, 10);
+    cov_text=OPT("mobile_cov_threshold", "0.1");cov=strtod(cov_text,&cov_end);
+    if(*cov_text && !*cov_end && isfinite(cov) && cov>=0)g_mobile_cov_threshold=cov;
+    else LOG_ERRORF("invalid mobile COV threshold; retaining previous value");
     g_enabled = strcmp(OPT("enabled", "1"), "1") == 0;
     safe_copy(interface, sizeof(interface), OPT("bacnet_interface", DEFAULT_BACNET_IF));
     if (strcmp(interface, g_bacnet_interface) != 0) {

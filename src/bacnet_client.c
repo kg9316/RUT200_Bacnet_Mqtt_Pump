@@ -69,18 +69,45 @@ static bool application_value_to_string(BACNET_APPLICATION_DATA_VALUE *value,
                                         char *dst,
                                         size_t n)
 {
-    size_t len;
-
-    if (!value || !dst || !n ||
-        value->tag != BACNET_APPLICATION_TAG_CHARACTER_STRING)
+    if (!value || !dst || !n || value->tag != BACNET_APPLICATION_TAG_CHARACTER_STRING)
         return false;
-
-    len = characterstring_length(&value->type.Character_String);
-    if (len >= n)
-        len = n - 1;
-
-    memcpy(dst, characterstring_value(&value->type.Character_String), len);
-    dst[len] = '\0';
+    BACNET_CHARACTER_STRING *text=&value->type.Character_String;
+    const unsigned char *bytes=(const unsigned char *)characterstring_value(text);
+    size_t length=characterstring_length(text), used=0, pos=0;
+    unsigned encoding=text->encoding;
+    /* BACnet strings are not necessarily UTF-8. Convert at the input boundary
+     * so JSON, MQTT and the GUI all receive the same valid UTF-8 text. */
+    if(encoding!=CHARACTER_UTF8 && encoding!=CHARACTER_ISO8859 &&
+       encoding!=CHARACTER_UCS2 && encoding!=CHARACTER_UCS4) { dst[0]=0;return false; }
+    while(pos<length) {
+        uint32_t cp=bytes[pos++];
+        if(encoding==CHARACTER_UCS2 || encoding==CHARACTER_UCS4) {
+            size_t width=encoding==CHARACTER_UCS2?2:4;
+            if(length-(pos-1)<width)cp=0xfffd,pos=length;
+            else for(size_t i=1;i<width;i++)cp=(cp<<8)|bytes[pos++];
+        } else if(encoding==CHARACTER_UTF8 && cp>=128) {
+            size_t extra=cp>=0xc2 && cp<=0xdf?1:cp>=0xe0 && cp<=0xef?2:cp>=0xf0 && cp<=0xf4?3:0;
+            uint32_t decoded=cp & (extra==1?31:extra==2?15:7);
+            bool valid=extra && length-pos>=extra;
+            for(size_t i=0;valid && i<extra;i++) {
+                if((bytes[pos+i]&0xc0)!=0x80)valid=false;
+                else decoded=(decoded<<6)|(bytes[pos+i]&63);
+            }
+            if(valid && decoded>=(extra==1?0x80:extra==2?0x800:0x10000) && decoded<=0x10ffff &&
+               !(decoded>=0xd800 && decoded<=0xdfff)) { cp=decoded;pos+=extra; }
+            /* Some older controllers label Latin-1 as encoding zero. Preserve
+             * those bytes as Latin-1 when they are not a valid UTF-8 sequence. */
+        }
+        if(cp>0x10ffff || (cp>=0xd800 && cp<=0xdfff) || cp==0)cp=0xfffd;
+        unsigned char out[4];size_t count;
+        if(cp<0x80) { out[0]=cp;count=1; }
+        else if(cp<0x800) { out[0]=0xc0|(cp>>6);out[1]=0x80|(cp&63);count=2; }
+        else if(cp<0x10000) { out[0]=0xe0|(cp>>12);out[1]=0x80|((cp>>6)&63);out[2]=0x80|(cp&63);count=3; }
+        else { out[0]=0xf0|(cp>>18);out[1]=0x80|((cp>>12)&63);out[2]=0x80|((cp>>6)&63);out[3]=0x80|(cp&63);count=4; }
+        if(count>=n-used)break; /* Never truncate inside a UTF-8 character. */
+        memcpy(dst+used,out,count);used+=count;
+    }
+    dst[used]=0;
     return true;
 }
 

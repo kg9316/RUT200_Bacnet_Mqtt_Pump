@@ -42,7 +42,12 @@ unsigned g_poll_ms = DEFAULT_POLL_MS;
 unsigned g_discovery_ms = DEFAULT_DISCOVERY_MS;
 unsigned g_max_age_sec = DEFAULT_MAX_AGE_SEC;
 unsigned g_min_send_sec = DEFAULT_MIN_SEND_SEC;
-double g_cov_threshold = 0.1;
+double g_cov_threshold = 0;
+unsigned g_mobile_max_age_sec = 0, g_mobile_min_send_sec = 300;
+double g_mobile_cov_threshold = 0.1;
+bool g_mobile_profile = true; /* Conservative until the broker route is known. */
+char g_uplink[64] = "unknown";
+#include "uplink_profile.inc"
 unsigned g_rp_timeout_ms = DEFAULT_RP_TIMEOUT_MS;
 char g_bacnet_interface[64] = DEFAULT_BACNET_IF;
 bool g_enabled = true;
@@ -158,16 +163,18 @@ void mqtt_publish_live_if_needed(DEVICE_STATE *device, POINT_STATE *point)
     uint64_t elapsed_ms = now_ms - point->last_publish_ms;
     /* First value bypasses the limiter. Subsequent attempts use the latest
      * polled value, with no queue or timer per point. */
-    if (point->have_published_value && elapsed_ms < (uint64_t)g_min_send_sec * 1000)
+    if (point->have_published_value && elapsed_ms < (uint64_t)(g_mobile_profile ? g_mobile_min_send_sec : g_min_send_sec) * 1000)
         return;
     expired = !point->have_published_value ||
-              (g_max_age_sec > 0 && elapsed_ms >= (uint64_t)g_max_age_sec * 1000);
+              ((g_mobile_profile ? g_mobile_max_age_sec : g_max_age_sec) > 0 && elapsed_ms >= (uint64_t)(g_mobile_profile ? g_mobile_max_age_sec : g_max_age_sec) * 1000);
 
+    double cov = g_mobile_profile ? g_mobile_cov_threshold : g_cov_threshold;
+    if (cov == 0) cov = 0.0000001;
     switch (point->value_kind) {
         case VALUE_NUMBER:
             if(point->object_type==OBJECT_ANALOG_INPUT || point->object_type==OBJECT_ANALOG_OUTPUT || point->object_type==OBJECT_ANALOG_VALUE)
-                changed = !point->have_published_value || g_cov_threshold==0 ||
-                    fabs(point->numeric_value-point->last_pub_numeric)>=g_cov_threshold;
+                changed = !point->have_published_value ||
+                    fabs(point->numeric_value-point->last_pub_numeric)>=cov;
             else changed = !point->have_published_value || double_changed(point->numeric_value,point->last_pub_numeric);
             break;
         case VALUE_ENUM:
@@ -185,7 +192,7 @@ void mqtt_publish_live_if_needed(DEVICE_STATE *device, POINT_STATE *point)
             return;
     }
 
-    if (!changed && !expired)
+    if (!changed && !expired && !(g_mqtt_settings.gk_cloud && !point->config_published && point->metadata_complete))
         return;
 
     if (g_mqtt_settings.gk_cloud) {
@@ -317,6 +324,7 @@ void mqtt_client_reconnect(void)
 void mqtt_client_loop(void)
 {
     uint64_t now = monotonic_ms();
+    uplink_collect(now);
     int rc;
     static bool paused;
     if (!g_enabled) {
@@ -345,6 +353,7 @@ void mqtt_client_loop(void)
         if (create_client() != MOSQ_ERR_SUCCESS) return;
         next_reconnect_ms = now + 30000; /* allow TLS handshake and CONNACK */
     }
+    uplink_tick(now);
     rc = mosquitto_loop(g_mosq, 0, 1);
     if (rc != MOSQ_ERR_SUCCESS || (!g_mqtt_connected && now >= next_reconnect_ms)) {
         mqtt_error(rc == MOSQ_ERR_SUCCESS ? "CONNACK timeout" : "network loop failed", rc == MOSQ_ERR_SUCCESS ? MOSQ_ERR_CONN_LOST : rc);
@@ -355,6 +364,7 @@ void mqtt_client_loop(void)
 
 void mqtt_client_cleanup(void)
 {
+    uplink_stop();
     destroy_client();
     tag_registry_cleanup();
     gk_cloud_cleanup();

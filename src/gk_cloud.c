@@ -249,7 +249,10 @@ char *gk_cloud_message(const DEVICE_STATE *device, const POINT_STATE *point,
     if (!point->config_published) {
         json_object_object_add(payload, "name", json_object_new_string(point->name));
         json_object_object_add(payload, "unit", json_object_new_string(point->unit));
-        json_object_object_add(payload, "description", json_object_new_string(point->description));
+        char *description=tag_registry_cloud_description(device,point);
+        if(!description) { json_object_put(payload);return NULL; }
+        json_object_object_add(payload, "description", json_object_new_string(description));
+        free(description);
     }
     result = strdup(json_object_to_json_string_ext(payload, JSON_C_TO_STRING_PLAIN));
     json_object_put(payload);

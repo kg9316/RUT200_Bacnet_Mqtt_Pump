@@ -31,6 +31,7 @@ endef
 define Package/gk-bacnet-mqtt/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/gk-bacnet-mqtt $(1)/usr/sbin/gk-bacnet-mqtt
+	$(INSTALL_DATA) ./files/gk-mqtt-uplink.lua $(1)/usr/sbin/gk-mqtt-uplink.lua
 	$(INSTALL_DIR) $(1)/etc/gk-bacnet-mqtt
 	$(INSTALL_CONF) ./files/tags.json $(1)/etc/gk-bacnet-mqtt/tags.json
 	$(INSTALL_DIR) $(1)/etc/config

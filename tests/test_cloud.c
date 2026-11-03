@@ -145,8 +145,13 @@ static void test_guids(void)
     assert(!json_object_object_get_ex(entry, "value", &field));
     DEVICE_STATE labels_device={0}; POINT_STATE labels_point={0};
     labels_device.device_id=100;labels_point.object_type=OBJECT_BINARY_VALUE;labels_point.object_instance=7;
+    safe_copy(labels_point.description,sizeof(labels_point.description),"Pump status");
     tag_registry_set_state_text(&labels_device,&labels_point,0,"Off");
     tag_registry_set_state_text(&labels_device,&labels_point,1,"Running \"auto\"");
+    char *description=tag_registry_cloud_description(&labels_device,&labels_point);
+    assert(description && !strcmp(description,"Pump status\n[States: 0=Off; 1=Running \"auto\"]"));free(description);
+    assert(!strcmp(labels_point.description,"Pump status"));
+    assert(!labels_point.config_published);
     char label_guid[37];safe_copy(label_guid,sizeof(label_guid),tag_registry_lookup(100,OBJECT_BINARY_VALUE,7));
     test_clock+=30001;tag_registry_flush_metadata();assert(!metadata_dirty);
     tag_registry_set_state_text(&labels_device,&labels_point,1,"Running \"auto\"");assert(!metadata_dirty);

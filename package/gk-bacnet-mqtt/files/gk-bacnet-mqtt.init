@@ -27,7 +27,7 @@ start_service()
         config_get topic_root main topic_root "bacnet"
         config_get poll_ms main poll_ms "60000"
         config_get discovery_ms main discovery_ms "600000"
-        config_get max_age_sec main max_age_sec "0"
+        config_get max_age_sec main max_age_sec "300"
         procd_open_instance
         procd_set_param command "$PROG" "$bacnet_interface" "$mqtt_host" "$mqtt_port" "$topic_root" "$poll_ms" "$discovery_ms" "$max_age_sec"
         procd_set_param respawn 5 10 0

@@ -117,6 +117,7 @@ jobs:
           mkdir -p "$UI/files/usr/sbin" "$UI/files/etc/config" "$UI/files/etc/init.d" "$UI/files/usr/lib/lua/api/services" "$UI/files/usr/share/vuci/path.d" "$UI/files/usr/share/rpcd/acl.d"
           mkdir -p "$UI/files/etc/gk-bacnet-mqtt"
           cp package/gk-bacnet-mqtt/files/tags.json "$UI/files/etc/gk-bacnet-mqtt/tags.json"
+          cp package/gk-bacnet-mqtt/files/gk-mqtt-uplink.lua "$UI/files/usr/sbin/gk-mqtt-uplink.lua"
           cp gk-bacnet-mqtt "$UI/files/usr/sbin/gk-bacnet-mqtt"; chmod 0755 "$UI/files/usr/sbin/gk-bacnet-mqtt"
           cp package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.config "$UI/files/etc/config/gk_bacnet_mqtt"
           cp package/gk-bacnet-mqtt/files/gk-bacnet-mqtt.init "$UI/files/etc/init.d/gk-bacnet-mqtt"; chmod 0755 "$UI/files/etc/init.d/gk-bacnet-mqtt"

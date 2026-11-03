@@ -237,6 +237,33 @@ void tag_registry_set_metadata(uint32_t device, unsigned type, uint32_t instance
     }
 }
 
+/* Build cloud-only metadata; never modify the persisted description or states. */
+char *tag_registry_cloud_description(const DEVICE_STATE *device, const POINT_STATE *point)
+{
+    char address[80];struct json_object *entry,*states;
+    snprintf(address,sizeof(address),"%lu:%u:%lu",(unsigned long)device->device_id,
+             (unsigned)point->object_type,(unsigned long)point->object_instance);
+    size_t size=strlen(point->description)+1,count=0;
+    if (!registry || !json_object_object_get_ex(registry,address,&entry) ||
+        !json_object_object_get_ex(entry,"s",&states) || !json_object_is_type(states,json_type_object))
+        return strdup(point->description);
+    json_object_object_foreach(states,key,value) {
+        if(!json_object_is_type(value,json_type_string))continue;
+        size+=strlen(key)+strlen(json_object_get_string(value))+3;count++;
+    }
+    if(!count)return strdup(point->description);
+    size+=12;
+    char *result=malloc(size);if(!result)return NULL;
+    size_t used=(size_t)snprintf(result,size,"%s%s[States: ",point->description,*point->description?"\n":"");
+    size_t index=0;
+    json_object_object_foreach(states,state,text) {
+        if(!json_object_is_type(text,json_type_string))continue;
+        used+=(size_t)snprintf(result+used,size-used,"%s%s=%s",index++?"; ":"",state,json_object_get_string(text));
+    }
+    snprintf(result+used,size-used,"]");
+    return result;
+}
+
 void tag_registry_set_state_text(DEVICE_STATE *device, POINT_STATE *point, uint32_t state, const char *text)
 {
     char address[80], key[16];
@@ -255,6 +282,7 @@ void tag_registry_set_state_text(DEVICE_STATE *device, POINT_STATE *point, uint3
     struct json_object *value=json_object_new_string(text);
     if (!value) return;
     json_object_object_add(states,key,value);
+    point->config_published=false;
     metadata_dirty=true;
 }
 

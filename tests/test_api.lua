@@ -69,4 +69,4 @@ for _,v in ipairs({"-0.1", "nan", "inf", "1e999", "bad", ""}) do
  service.arguments={data={cov_threshold=v}}
  assert(not service:POST_TYPE_config().ok)
 end
-print("PASS: COV decimal threshold, disabled filter and invalid values")
+print("PASS: COV decimal threshold, zero tolerance setting and invalid values")

@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 61: Configurable analog COV threshold, default 0.1; zero disables filtering.
+# Release 62: Mobile send profiles, state descriptions and Norwegian BACnet text.
 
 on:
   workflow_dispatch:

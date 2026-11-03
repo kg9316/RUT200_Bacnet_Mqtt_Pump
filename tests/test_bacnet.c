@@ -29,7 +29,25 @@ int bacapp_decode_application_data(uint8_t*b,uint32_t n,BACNET_APPLICATION_DATA_
 size_t characterstring_length(BACNET_CHARACTER_STRING*s){return s->length;}
 char *characterstring_value(BACNET_CHARACTER_STRING*s){return s->value;}
 static DEVICE_STATE *device(unsigned id,unsigned points){DEVICE_STATE*d=get_or_create_device(id);d->have_name=d->have_object_count=d->object_list_complete=true;d->state=1;d->rpm_limit=1;for(unsigned i=0;i<points;i++){POINT_STATE*p=add_point(d,OBJECT_ANALOG_INPUT,i);p->metadata_complete=true;}return d;}
+static void test_text_encoding(void) {
+ BACNET_APPLICATION_DATA_VALUE v={0};char out[32];v.tag=BACNET_APPLICATION_TAG_CHARACTER_STRING;
+ const unsigned char latin[]={0xc6,0xd8,0xc5,0xe6,0xf8,0xe5};
+ const char *utf="\xc3\x86\xc3\x98\xc3\x85\xc3\xa6\xc3\xb8\xc3\xa5";
+ v.type.Character_String.encoding=CHARACTER_ISO8859;
+ v.type.Character_String.length=sizeof(latin);memcpy(v.type.Character_String.value,latin,sizeof(latin));
+ assert(application_value_to_string(&v,out,sizeof(out)) && !strcmp(out,utf));
+ v.type.Character_String.encoding=CHARACTER_UTF8;
+ assert(application_value_to_string(&v,out,sizeof(out)) && !strcmp(out,utf));
+ memcpy(v.type.Character_String.value,utf,12);v.type.Character_String.length=12;
+ assert(application_value_to_string(&v,out,sizeof(out)) && !strcmp(out,utf));
+ assert(application_value_to_string(&v,out,4) && strlen(out)==2);
+ const unsigned char ucs[]={0,0xe6,0,0xf8,0,0xe5};
+ v.type.Character_String.encoding=CHARACTER_UCS2;v.type.Character_String.length=sizeof(ucs);memcpy(v.type.Character_String.value,ucs,sizeof(ucs));
+ assert(application_value_to_string(&v,out,sizeof(out)) && !strcmp(out,utf+6));
+ puts("PASS: Norwegian UTF-8, Latin-1, legacy encoding zero, UCS-2 and character-safe truncation");
+}
 int main(void){
+ test_text_encoding();
  DEVICE_STATE *disabled=device(42,3);
  for(unsigned i=0;i<3;i++)disabled->points[i].poll_disabled=true;
  assert(!schedule_values(disabled,clock_ms));

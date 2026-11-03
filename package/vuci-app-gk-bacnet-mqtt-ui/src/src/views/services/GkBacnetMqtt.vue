@@ -365,10 +365,13 @@ export default {
 
         discovery_min: '10',
 
-        max_age_sec: '0',
+        max_age_sec: '300',
 
-        min_send_sec: '300',
-        cov_threshold: '0.1',
+        min_send_sec: '0',
+        cov_threshold: '0',
+        mobile_max_age_sec: '0',
+        mobile_min_send_sec: '300',
+        mobile_cov_threshold: '0.1',
 
       },
 
@@ -466,6 +469,7 @@ export default {
 
         { label: this.$t('BACnet points'), value: this.status.points },
 
+        { label: this.$t('MQTT send profile'), value: this.status.uplink === 'unknown' ? this.$t('Unknown uplink — mobile limits') : `${this.status.mobileProfile ? this.$t('Mobile') : this.$t('Normal')} (${this.status.uplink || '-'})` },
         { label: this.$t('MQTT broker'), value: `${this.status.mqttHost || '-'}:${this.status.mqttPort || '-'}` },
 
         { label: this.$t('MQTT TLS'), value: this.status.mqttTls ? this.$t('Enabled') : this.$t('Disabled') },
@@ -522,8 +526,11 @@ export default {
 
         { key: 'max_age_sec', label: this.$t('Max send time (s, 0 = no periodic sending)'), type: 'text' },
 
-        { key: 'cov_threshold', label: this.$t('Analog COV threshold (0 = no change filter; min send time still applies)'), type: 'text' },
+        { key: 'cov_threshold', label: this.$t('Analog COV threshold (0 = 0.0000001; min send time still applies)'), type: 'text' },
         { key: 'min_send_sec', label: this.$t('Min send time (s, 0 = no rate limit)'), type: 'text' },
+        { key: 'mobile_max_age_sec', label: this.$t('Mobile: Max send time (s, 0 = no periodic sending)'), type: 'text' },
+        { key: 'mobile_cov_threshold', label: this.$t('Mobile: Analog COV threshold (0 = 0.0000001)'), type: 'text' },
+        { key: 'mobile_min_send_sec', label: this.$t('Mobile: Min send time (s, 0 = no rate limit)'), type: 'text' },
 
       ].filter((field) => {
 
@@ -969,6 +976,7 @@ export default {
           ...config, rpm_batch_max: String(config.rpm_batch_max),
 
           cov_threshold: String(this.config.cov_threshold).trim().replace(',', '.'),
+          mobile_cov_threshold: String(this.config.mobile_cov_threshold).trim().replace(',', '.'),
           poll_ms: toMilliseconds(poll_sec, 1000),
 
           discovery_ms: toMilliseconds(discovery_min, 60000),

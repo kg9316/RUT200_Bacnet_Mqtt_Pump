@@ -27,8 +27,8 @@
 #define DEFAULT_POLL_MS         60000
 #define DEFAULT_DISCOVERY_MS    600000
 #define DISCOVERY_EMPTY_MS       2000
-#define DEFAULT_MAX_AGE_SEC     0
-#define DEFAULT_MIN_SEND_SEC    300
+#define DEFAULT_MAX_AGE_SEC     300
+#define DEFAULT_MIN_SEND_SEC    0
 #define DEFAULT_RP_TIMEOUT_MS   3000
 
 #ifndef BACNET_ARRAY_ALL
@@ -148,6 +148,10 @@ extern unsigned g_discovery_ms;
 extern unsigned g_max_age_sec;
 extern unsigned g_min_send_sec;
 extern double g_cov_threshold;
+extern unsigned g_mobile_max_age_sec, g_mobile_min_send_sec;
+extern double g_mobile_cov_threshold;
+extern bool g_mobile_profile;
+extern char g_uplink[64];
 extern unsigned g_rp_timeout_ms;
 extern char g_bacnet_interface[64];
 extern bool g_enabled;

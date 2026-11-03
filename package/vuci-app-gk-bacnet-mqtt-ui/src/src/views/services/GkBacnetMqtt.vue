@@ -221,7 +221,7 @@
 
 
 
-    <tlt-card :initial-active="false" :active="false" :title="$t('Point export')">
+    <tlt-card :initial-active="false" :active="false" :title="$t('Backup')">
 
       <p>{{ $t('Download controller ID and the local GUID mapping with names, units and descriptions.') }}</p>
 

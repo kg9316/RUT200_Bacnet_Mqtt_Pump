@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 69: Discover all devices sharing manual endpoints; accept numeric Device IDs.
+# Release 70: Rename point export and restore section to Backup.
 
 on:
   workflow_dispatch:

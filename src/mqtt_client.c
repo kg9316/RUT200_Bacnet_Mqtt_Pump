@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 
 static struct mosquitto *g_mosq = NULL;
 static bool g_mqtt_connected = false;
@@ -41,6 +42,7 @@ unsigned g_poll_ms = DEFAULT_POLL_MS;
 unsigned g_discovery_ms = DEFAULT_DISCOVERY_MS;
 unsigned g_max_age_sec = DEFAULT_MAX_AGE_SEC;
 unsigned g_min_send_sec = DEFAULT_MIN_SEND_SEC;
+double g_cov_threshold = 0.1;
 unsigned g_rp_timeout_ms = DEFAULT_RP_TIMEOUT_MS;
 char g_bacnet_interface[64] = DEFAULT_BACNET_IF;
 bool g_enabled = true;
@@ -163,9 +165,13 @@ void mqtt_publish_live_if_needed(DEVICE_STATE *device, POINT_STATE *point)
 
     switch (point->value_kind) {
         case VALUE_NUMBER:
+            if(point->object_type==OBJECT_ANALOG_INPUT || point->object_type==OBJECT_ANALOG_OUTPUT || point->object_type==OBJECT_ANALOG_VALUE)
+                changed = !point->have_published_value || g_cov_threshold==0 ||
+                    fabs(point->numeric_value-point->last_pub_numeric)>=g_cov_threshold;
+            else changed = !point->have_published_value || double_changed(point->numeric_value,point->last_pub_numeric);
+            break;
         case VALUE_ENUM:
-            changed = !point->have_published_value ||
-                      double_changed(point->numeric_value, point->last_pub_numeric);
+            changed = !point->have_published_value || point->numeric_value!=point->last_pub_numeric;
             break;
         case VALUE_BOOL:
             changed = !point->have_published_value ||

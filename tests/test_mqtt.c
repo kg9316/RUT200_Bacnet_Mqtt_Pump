@@ -153,6 +153,18 @@ int main(void)
     mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued && point.last_pub_numeric==3);
     g_enabled=true;
     mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued && point.last_pub_numeric==5);
+    point.object_type=OBJECT_ANALOG_INPUT;point.last_pub_numeric=0;g_cov_threshold=0.1;
+    point.numeric_value=0.09;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
+    point.numeric_value=0.1;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
+    point.numeric_value=-0.1;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
+    g_cov_threshold=0;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
+    g_min_send_sec=300;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);g_min_send_sec=0;
+    point.value_kind=VALUE_ENUM;point.object_type=OBJECT_MULTI_STATE_VALUE;point.numeric_value=point.last_pub_numeric;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
+    g_cov_threshold=100;point.numeric_value=2;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
+    point.value_kind=VALUE_BOOL;point.bool_value=point.last_pub_bool;
+    mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
+    point.bool_value=!point.last_pub_bool;mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==++queued);
     point.poll_disabled=true;point.numeric_value=99;point.have_published_value=false;
     mqtt_publish_live_if_needed(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);
     mqtt_publish_config(&g_devices[0],&point);assert(g_mqtt_diagnostics.queued==queued);

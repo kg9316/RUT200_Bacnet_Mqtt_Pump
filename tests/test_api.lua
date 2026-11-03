@@ -59,3 +59,14 @@ for _,key in ipairs({"max_age_sec","min_send_sec"}) do
     end
 end
 print("PASS: min/max send time validation, zero settings and persistence")
+
+for _,v in ipairs({"0", "0.1", "2.5"}) do
+ service.arguments={data={cov_threshold=v}}
+ assert(service:POST_TYPE_config().ok and values.cov_threshold==v)
+ assert(service:GET_TYPE_config().data.cov_threshold==v)
+end
+for _,v in ipairs({"-0.1", "nan", "inf", "1e999", "bad", ""}) do
+ service.arguments={data={cov_threshold=v}}
+ assert(not service:POST_TYPE_config().ok)
+end
+print("PASS: COV decimal threshold, disabled filter and invalid values")

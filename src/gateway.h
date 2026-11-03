@@ -147,6 +147,7 @@ extern unsigned g_rpm_batch_max;
 extern unsigned g_discovery_ms;
 extern unsigned g_max_age_sec;
 extern unsigned g_min_send_sec;
+extern double g_cov_threshold;
 extern unsigned g_rp_timeout_ms;
 extern char g_bacnet_interface[64];
 extern bool g_enabled;

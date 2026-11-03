@@ -3,7 +3,7 @@ local uci = require("uci")
 local Service = FunctionService:new()
 local OPTIONS = {
     "enabled", "bacnet_interface", "mqtt_host", "mqtt_port", "topic_root",
-    "rpm_batch_max", "poll_ms", "discovery_ms", "max_age_sec", "min_send_sec", "mqtt_mode", "mqtt_tls",
+    "cov_threshold", "rpm_batch_max", "poll_ms", "discovery_ms", "max_age_sec", "min_send_sec", "mqtt_mode", "mqtt_tls",
     "mqtt_ca_file", "mqtt_cert_file", "mqtt_key_file", "controller_id",
 }
 
@@ -12,6 +12,7 @@ local function public_config(values)
     for _, key in ipairs(OPTIONS) do data[key] = values[key] end
     data.rpm_batch_max = values.rpm_batch_max or "30"
     data.min_send_sec = values.min_send_sec or "300"
+    data.cov_threshold = values.cov_threshold or "0.1"
     data.controller_license_configured = (values.controller_license or "") ~= ""
     return data
 end
@@ -24,6 +25,9 @@ end
 local function validate(values)
     values.rpm_batch_max = values.rpm_batch_max or "30"
     values.min_send_sec = values.min_send_sec or "300"
+    values.cov_threshold = values.cov_threshold or "0.1"
+    local cov = tonumber(values.cov_threshold)
+    if not cov or cov ~= cov or cov < 0 or cov == math.huge then return "Invalid cov_threshold" end
     local mode = values.mqtt_mode or "generic"
     if mode ~= "generic" and mode ~= "gk_cloud" then return "Invalid MQTT mode" end
     for _, key in ipairs({"enabled", "mqtt_tls"}) do

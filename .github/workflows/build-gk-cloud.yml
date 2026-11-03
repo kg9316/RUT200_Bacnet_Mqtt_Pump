@@ -1,5 +1,5 @@
 name: Build GK Cloud TLS package
-# Release 60: RutOS 7.24.7, defaults, point values, units and resilient RPM limits.
+# Release 61: Configurable analog COV threshold, default 0.1; zero disables filtering.
 
 on:
   workflow_dispatch:
